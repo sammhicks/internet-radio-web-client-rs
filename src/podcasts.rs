@@ -12,6 +12,8 @@ use yew::{
     Callback, Component, ComponentLink, Html, InputData, Properties, ShouldRender,
 };
 
+use rradio_messages::Command;
+
 const PODCASTS_KEY: &str = "RRADIO_PODCASTS";
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -28,7 +30,7 @@ impl Display for Podcast {
 
 #[derive(Clone, Properties)]
 pub struct Props {
-    pub play_url: Callback<String>,
+    pub send_command: Callback<Command>,
 }
 
 pub enum Msg {
@@ -39,7 +41,6 @@ pub enum Msg {
         url: String,
         response: Response<Result<String>>,
     },
-    PlayUrl(String),
 }
 
 pub struct Podcasts {
@@ -71,7 +72,10 @@ impl Podcasts {
     fn render_item(&self, item: &Item) -> Html {
         let button = if let Some(enclosure) = &item.enclosure {
             let url = enclosure.url.clone();
-            let on_click = self.link.callback(move |_| Msg::PlayUrl(url.clone()));
+            let on_click = self
+                .props
+                .send_command
+                .reform(move |_| Command::PlayUrl(url.clone()));
             html! {
                 <button onclick=on_click>{"Play"}</button>
             }
@@ -97,10 +101,10 @@ impl Podcasts {
                 .map(|item| self.render_item(item))
                 .collect::<Html>();
             html! {
-                <>
+                <div id="podcast-items">
                     <h1>{channel.title.clone()}</h1>
                     { items }
-                </>
+                </div>
             }
         } else {
             html! {
@@ -191,11 +195,29 @@ impl Component for Podcasts {
                 }
                 self.current_fetch_task = None;
                 true
-            }
-            Msg::PlayUrl(url) => {
-                self.props.play_url.emit(url);
-                false
-            }
+            } // Msg::PlayUrl(url) => {
+              //     self.props
+              //         .send_command
+              //         .emit(rradio_messages::Command::PlayUrl(url));
+              //     false
+              // }
+              // Msg::PlayPause => self.props.send_command,
+              // Msg::Rewind => {
+              //     self.props
+              //         .send_command
+              //         .emit(rradio_messages::Command::SeekBackwards(
+              //             std::time::Duration::from_secs(10),
+              //         ));
+              //     false
+              // }
+              // Msg::Fastforward => {
+              //     self.props
+              //         .send_command
+              //         .emit(rradio_messages::Command::SeekForwards(
+              //             std::time::Duration::from_secs(10),
+              //         ));
+              //     false
+              // }
         }
     }
 
@@ -215,9 +237,11 @@ impl Component for Podcasts {
 
         let on_podcast_changed = self.link.callback(Msg::PodcastSelected);
 
+        let seek_offset = std::time::Duration::from_secs(10);
+
         let items = self.render_items();
         html! {
-            <>
+            <div id="podcasts">
                 <form onsubmit=on_new_url>
                     <label>{"Podcast URL: "}<input type="text" value=self.new_podcast_url.clone() oninput=new_podcast_url_changed/></label>
                     <input type="submit" value="Add Podcast"/>
@@ -227,7 +251,12 @@ impl Component for Podcasts {
                 <yew_components::Select<Podcast> options=self.podcasts.clone() selected=self.selected_podcast.clone() on_change=on_podcast_changed/>
                 </label>
                 {items}
-            </>
+                <footer id="podcasts-playback-controls">
+                    <button onclick=self.props.send_command.reform(move|_|Command::SeekBackwards(seek_offset))>{"⏪"}</button>
+                    <button onclick=self.props.send_command.reform(|_|Command::PlayPause)>{"⏯️"}</button>
+                    <button onclick=self.props.send_command.reform(move|_|Command::SeekForwards(seek_offset))>{"⏩"}</button>
+                </footer>
+            </div>
         }
     }
 }

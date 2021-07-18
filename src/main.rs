@@ -271,16 +271,13 @@ impl Component for AppState {
         let connection_state = connection_state.unwrap_or_default();
 
         let send_command = self.link.callback(Msg::SendCommand);
-        let play_url = self
-            .link
-            .callback(|url: String| Msg::SendCommand(Command::PlayUrl(url)));
 
         let current_view = match self.current_view {
             CurrentView::Player => {
                 html! { <player::Player player_state=self.player_state.clone() send_command=send_command /> }
             }
             CurrentView::Podcasts => {
-                html! { <podcasts::Podcasts play_url=play_url /> }
+                html! { <podcasts::Podcasts send_command=send_command /> }
             }
         };
 

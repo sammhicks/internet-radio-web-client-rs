@@ -27,3 +27,28 @@ button {
     width: 3em;
     height: 2em;
 }
+
+#podcasts {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    flex-flow: column nowrap;
+}
+
+#podcast-items {
+    overflow-y: scroll;
+}
+
+#podcasts-playback-controls {
+    display: flex;
+    flex-flow: row wrap;
+    justify-content: space-evenly;
+    border-top: 1px solid black;
+}
+
+#podcasts-playback-controls button {
+    margin: 0.5em;
+}

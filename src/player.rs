@@ -159,9 +159,9 @@ impl Component for Player {
                 {track_tags}
                 <label>{"Volume:"}<input type="range" min=rradio_messages::VOLUME_MIN.to_string() max=rradio_messages::VOLUME_MAX.to_string() value={self.props.player_state.volume.to_string()} oninput=on_volume_change/></label>
                 <div>
-                    <button onclick=self.link.callback(|_| Msg::SendCommand(Command::PreviousItem))>{"⏮"}</button>
-                    <button onclick=self.link.callback(|_| Msg::SendCommand(Command::PlayPause))>{"⏯"}</button>
-                    <button onclick=self.link.callback(|_| Msg::SendCommand(Command::NextItem))>{"⏭"}</button>
+                    <button onclick=self.link.callback(|_| Msg::SendCommand(Command::PreviousItem))>{"⏮️"}</button>
+                    <button onclick=self.link.callback(|_| Msg::SendCommand(Command::PlayPause))>{"⏯️"}</button>
+                    <button onclick=self.link.callback(|_| Msg::SendCommand(Command::NextItem))>{"⏭️"}</button>
                 </div>
                 <label>{"Position:"}<output>{position}</output></label>
                 <label>{"Buffering:"}<progress value=self.props.player_state.buffering.to_string() min=0 max=100> {self.props.player_state.buffering}{"%"} </progress></label>
