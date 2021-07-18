@@ -219,9 +219,13 @@ impl Component for Podcasts {
         html! {
             <>
                 <form onsubmit=on_new_url>
-                    <label>{"Playlist URL: "}<input type="text" value=self.new_podcast_url.clone() oninput=new_podcast_url_changed/></label>
+                    <label>{"Podcast URL: "}<input type="text" value=self.new_podcast_url.clone() oninput=new_podcast_url_changed/></label>
+                    <input type="submit" value="Add Podcast"/>
                 </form>
+                <label>
+                {"Select Podcast:"}
                 <yew_components::Select<Podcast> options=self.podcasts.clone() selected=self.selected_podcast.clone() on_change=on_podcast_changed/>
+                </label>
                 {items}
             </>
         }

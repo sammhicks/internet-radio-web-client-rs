@@ -136,8 +136,12 @@ impl Component for AppState {
     type Properties = ();
 
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        let host = yew::utils::host().unwrap();
+        let host = host.split_once(":").map_or(host.as_str(), |(host, _)| host);
+        let url = format!("ws://{}:8000", host);
+        log::info!("Connecting to {}", url);
         let connection = match WebSocketService::connect_binary(
-            &format!("ws://{}:8000", yew::utils::host().unwrap()),
+            &url,
             link.callback(Msg::WebsocketMessageReceived),
             link.callback(Msg::WebsocketStatusChanged),
         ) {
@@ -248,20 +252,23 @@ impl Component for AppState {
 
     fn view(&self) -> Html {
         let connection_state = match &self.connection {
-            ConnectionState::NotConnected => Cow::Borrowed("Not Connected"),
-            ConnectionState::IncompatibleVersion(version) => Cow::Owned(format!(
+            ConnectionState::NotConnected => Some(Cow::Borrowed("Not Connected")),
+            ConnectionState::IncompatibleVersion(version) => Some(Cow::Owned(format!(
                 "Incompatible Version: Client = {}, Server = {}",
                 rradio_messages::VERSION,
                 version
-            )),
+            ))),
             ConnectionState::HasConnection {
                 is_connected: false,
                 ..
-            } => Cow::Borrowed("Connecting"),
+            } => Some(Cow::Borrowed("Connecting")),
             ConnectionState::HasConnection {
                 is_connected: true, ..
-            } => Cow::Borrowed("Connected"),
+            } => None,
         };
+
+        let connection_header_visible = connection_state.as_ref().map(|_| "visible");
+        let connection_state = connection_state.unwrap_or_default();
 
         let send_command = self.link.callback(Msg::SendCommand);
         let play_url = self
@@ -278,8 +285,8 @@ impl Component for AppState {
         };
 
         html! {
-            <body id="app">
-                <header>{"Connection State:"}{connection_state}</header>
+            <body class="app">
+                <header class=yew::classes!(connection_header_visible)><output>{connection_state}</output></header>
                 {current_view}
             </body>
         }

@@ -1,5 +1,18 @@
-#app>* {
+body.app>* {
     display: block;
+}
+
+header {
+    display: none;
+}
+
+header.visible {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: center;
 }
 
 .album-art {
