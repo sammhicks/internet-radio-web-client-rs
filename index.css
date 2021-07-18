@@ -1,0 +1,16 @@
+#app>* {
+    display: block;
+}
+
+.album-art {
+    vertical-align: top;
+}
+
+li.selected {
+    font-weight: bold;
+}
+
+button {
+    width: 3em;
+    height: 2em;
+}
