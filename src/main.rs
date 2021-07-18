@@ -137,7 +137,7 @@ impl Component for AppState {
 
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
         let connection = match WebSocketService::connect_binary(
-            "ws://localhost:8000",
+            &format!("ws://{}:8000", yew::utils::host().unwrap()),
             link.callback(Msg::WebsocketMessageReceived),
             link.callback(Msg::WebsocketStatusChanged),
         ) {
