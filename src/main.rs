@@ -136,9 +136,11 @@ impl Component for AppState {
     type Properties = ();
 
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let host = yew::utils::host().unwrap();
-        let host = host.split_once(":").map_or(host.as_str(), |(host, _)| host);
-        let url = format!("ws://{}:8000", host);
+        let host = yew::services::StorageService::new(yew::services::storage::Area::Local)
+            .ok()
+            .and_then(|storage| storage.restore::<Result<_>>("RRADIO_SERVER").ok())
+            .unwrap_or_else(|| yew::utils::host().unwrap());
+        let url = format!("ws://{}", host);
         log::info!("Connecting to {}", url);
         let connection = match WebSocketService::connect_binary(
             &url,
@@ -252,9 +254,9 @@ impl Component for AppState {
 
     fn view(&self) -> Html {
         let connection_state = match &self.connection {
-            ConnectionState::NotConnected => Some(Cow::Borrowed("Not Connected")),
+            ConnectionState::NotConnected => Some(Cow::Borrowed("❌Not Connected❌")),
             ConnectionState::IncompatibleVersion(version) => Some(Cow::Owned(format!(
-                "Incompatible Version: Client = {}, Server = {}",
+                "❌Incompatible Version: Client = {}, Server = {}❌",
                 rradio_messages::VERSION,
                 version
             ))),
