@@ -195,29 +195,7 @@ impl Component for Podcasts {
                 }
                 self.current_fetch_task = None;
                 true
-            } // Msg::PlayUrl(url) => {
-              //     self.props
-              //         .send_command
-              //         .emit(rradio_messages::Command::PlayUrl(url));
-              //     false
-              // }
-              // Msg::PlayPause => self.props.send_command,
-              // Msg::Rewind => {
-              //     self.props
-              //         .send_command
-              //         .emit(rradio_messages::Command::SeekBackwards(
-              //             std::time::Duration::from_secs(10),
-              //         ));
-              //     false
-              // }
-              // Msg::Fastforward => {
-              //     self.props
-              //         .send_command
-              //         .emit(rradio_messages::Command::SeekForwards(
-              //             std::time::Duration::from_secs(10),
-              //         ));
-              //     false
-              // }
+            }
         }
     }
 
@@ -242,14 +220,16 @@ impl Component for Podcasts {
         let items = self.render_items();
         html! {
             <div id="podcasts">
-                <form onsubmit=on_new_url>
-                    <label>{"Podcast URL: "}<input type="text" value=self.new_podcast_url.clone() oninput=new_podcast_url_changed/></label>
-                    <input type="submit" value="Add Podcast"/>
-                </form>
-                <label>
-                {"Select Podcast:"}
-                <yew_components::Select<Podcast> options=self.podcasts.clone() selected=self.selected_podcast.clone() on_change=on_podcast_changed/>
-                </label>
+                <div id="podcast-selector">
+                    <form onsubmit=on_new_url>
+                        <label>{"Podcast URL: "}<input type="text" value=self.new_podcast_url.clone() oninput=new_podcast_url_changed/></label>
+                        <input type="submit" value="Add Podcast"/>
+                    </form>
+                    <label>
+                    {"Select Podcast:"}
+                    <yew_components::Select<Podcast> options=self.podcasts.clone() selected=self.selected_podcast.clone() on_change=on_podcast_changed/>
+                    </label>
+                </div>
                 {items}
                 <footer id="podcasts-playback-controls">
                     <button onclick=self.props.send_command.reform(move|_|Command::SeekBackwards(seek_offset))>{"⏪"}</button>
