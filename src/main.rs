@@ -140,7 +140,7 @@ impl Component for AppState {
             .ok()
             .and_then(|storage| storage.restore::<Result<_>>("RRADIO_SERVER").ok())
             .unwrap_or_else(|| yew::utils::host().unwrap());
-        let url = format!("ws://{}", host);
+        let url = format!("ws://{}/api", host);
         log::info!("Connecting to {}", url);
         let connection = match WebSocketService::connect_binary(
             &url,
@@ -157,18 +157,18 @@ impl Component for AppState {
             }
         };
 
-        let path = yew::utils::document()
+        let appname = yew::utils::document()
             .location()
             .and_then(|location| {
                 location
-                    .pathname()
-                    .map_err(|err| log::error!("No pathname: {:?}", err.as_string()))
+                    .search()
+                    .map_err(|err| log::error!("No search: {:?}", err.as_string()))
                     .ok()
             })
             .unwrap_or_default();
 
-        let current_view = match path.as_str() {
-            "/podcasts" => CurrentView::Podcasts,
+        let current_view = match appname.as_str() {
+            "?podcasts" => CurrentView::Podcasts,
             _ => CurrentView::Player,
         };
 
