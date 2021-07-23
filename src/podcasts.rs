@@ -77,17 +77,19 @@ impl Podcasts {
                 .send_command
                 .reform(move |_| Command::PlayUrl(url.clone()));
             html! {
-                <button onclick=on_click>{"Play"}</button>
+                <button onclick=on_click>{"Stream"}</button>
             }
         } else {
-            html! { <p>{"Nothing to play"}</p> }
+            html! { <p>{"Nothing to stream"}</p> }
         };
 
         html! {
             <>
                 <h2>{item.title.clone().unwrap_or_default()}</h2>
+                <div class="stream-button-row">
+                    {button}
+                </div>
                 <p>{item.description.clone().unwrap_or_default()}</p>
-                {button}
                 <hr/>
             </>
         }
