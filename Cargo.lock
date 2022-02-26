@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "internet-radio-web-client-rs"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "log",
@@ -449,8 +449,8 @@ dependencies = [
 
 [[package]]
 name = "rradio-messages"
-version = "0.22.0"
-source = "git+https://github.com/sammhicks/internet-radio-rs#6996255154662f30363d90ce57a16601e2e3e45e"
+version = "0.22.2"
+source = "git+https://github.com/sammhicks/internet-radio-rs#c451ca98a2df3111dc5d2fa37f1b38e27cd0fd8c"
 dependencies = [
  "arcstr",
  "serde",
