@@ -1,299 +1,295 @@
-#![recursion_limit = "512"]
+use std::{fmt, time::Duration};
 
-use std::{borrow::Cow, time::Duration};
+use anyhow::Context;
+use dioxus::prelude::*;
+use futures_util::{FutureExt, SinkExt, StreamExt};
+use gloo_storage::Storage;
 
-use anyhow::Result;
-use yew::{
-    format::MsgPack,
-    html,
-    services::{
-        websocket::{WebSocketStatus, WebSocketTask},
-        WebSocketService,
-    },
-    Component, ComponentLink, Html, ShouldRender,
-};
+use rradio_messages::ArcStr;
 
-use rradio_messages::{ArcStr, Command, PipelineState, PlayerStateDiff, Station, TrackTags};
+mod fast_eq_rc;
+use fast_eq_rc::FastEqRc;
 
-mod player;
-mod podcasts;
+mod update_from_diff;
+use update_from_diff::UpdateFromDiff;
 
-struct DurationDisplay(Duration);
+mod debug_view;
+mod player_state_view;
+mod podcasts_view;
 
-impl std::fmt::Display for DurationDisplay {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let total_secs = self.0.as_secs();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppView {
+    PlayerState,
+    Podcasts,
+    Debug,
+}
 
-        let total_mins = total_secs / 60;
-        let secs = total_secs % 60;
-
-        let hours = total_mins / 60;
-        let mins = total_mins % 60;
-
-        if hours > 0 {
-            write!(f, "{:02}:{:02}:{:02}", hours, mins, secs)
-        } else {
-            write!(f, "{:02}:{:02}", mins, secs)
+impl AppView {
+    fn classname(self) -> &'static str {
+        match self {
+            AppView::PlayerState => "player-state",
+            AppView::Podcasts => "podcasts",
+            AppView::Debug => "debug",
         }
     }
 }
 
-trait CreatesOptionalCallback<M> {
-    fn result_callback<F, IN>(&self, function: F) -> yew::Callback<IN>
-    where
-        F: Fn(IN) -> Result<M> + 'static;
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConnectionState {
+    Connecting,
+    Connected,
+    Disconnected,
+    ConnectionError(ArcStr),
 }
 
-impl<COMP: yew::Component, M: Into<COMP::Message>> CreatesOptionalCallback<M>
-    for yew::ComponentLink<COMP>
-{
-    fn result_callback<F, IN>(&self, function: F) -> yew::Callback<IN>
-    where
-        F: Fn(IN) -> Result<M> + 'static,
-    {
-        let scope = self.clone();
-        let closure = move |input| match function(input) {
-            Ok(output) => scope.send_message(output),
-            Err(err) => log::error!("{:#}", err),
-        };
-        closure.into()
-    }
-}
-
-fn update_value<T>(current_value: &mut T, diff_value: Option<T>) {
-    if let Some(new_value) = diff_value {
-        *current_value = new_value;
-    }
-}
-
-fn update_option<T>(current_value: &mut Option<T>, diff_value: rradio_messages::OptionDiff<T>) {
-    match diff_value {
-        rradio_messages::OptionDiff::NoChange => (),
-        rradio_messages::OptionDiff::ChangedToNone => {
-            *current_value = None;
-        }
-        rradio_messages::OptionDiff::ChangedToSome(value) => {
-            *current_value = Some(value);
+impl ConnectionState {
+    pub fn handle_closed(
+        connection_state: UseState<ConnectionState>,
+    ) -> impl Fn(anyhow::Result<()>) {
+        move |result: anyhow::Result<()>| {
+            connection_state.set(match result {
+                Ok(()) => Self::Disconnected,
+                Err(err) => Self::ConnectionError(rradio_messages::arcstr::format!("{:#}", err)),
+            });
         }
     }
 }
 
-#[allow(clippy::large_enum_variant)]
-enum ConnectionState {
-    NotConnected,
-    IncompatibleVersion(ArcStr),
-    HasConnection {
-        task: WebSocketTask,
-        is_connected: bool,
-    },
-}
-
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlayerState {
-    pub pipeline_state: PipelineState,
-    pub current_station: Option<Station>,
+    pub pipeline_state: rradio_messages::PipelineState,
+    pub current_station: FastEqRc<Option<rradio_messages::Station>>,
+    pub pause_before_playing: Option<Duration>,
     pub current_track_index: usize,
-    pub current_track_tags: Option<TrackTags>,
+    pub current_track_tags: FastEqRc<Option<rradio_messages::TrackTags>>,
     pub volume: i32,
     pub buffering: u8,
     pub track_duration: Option<Duration>,
     pub track_position: Option<Duration>,
+    pub ping_times: rradio_messages::PingTimes,
 }
 
-impl PlayerState {
-    fn update(&mut self, diff: PlayerStateDiff) {
-        update_value(&mut self.pipeline_state, diff.pipeline_state);
-        update_option(&mut self.current_station, diff.current_station);
-        update_value(&mut self.current_track_index, diff.current_track_index);
-        update_option(&mut self.current_track_tags, diff.current_track_tags);
-        update_value(&mut self.volume, diff.volume);
-        update_value(&mut self.buffering, diff.buffering);
-        update_option(&mut self.track_duration, diff.track_duration);
-        update_option(&mut self.track_position, diff.track_position);
+impl UpdateFromDiff<rradio_messages::PlayerStateDiff> for PlayerState {
+    fn update_from_diff(&mut self, diff: rradio_messages::PlayerStateDiff) {
+        let rradio_messages::PlayerStateDiff {
+            pipeline_state,
+            current_station,
+            pause_before_playing,
+            current_track_index,
+            current_track_tags,
+            volume,
+            buffering,
+            track_duration,
+            track_position,
+            ping_times,
+        } = diff;
+
+        self.pipeline_state.update_from_diff(pipeline_state);
+        self.current_station.update_from_diff(current_station);
+        self.pause_before_playing
+            .update_from_diff(pause_before_playing);
+        self.current_track_index
+            .update_from_diff(current_track_index);
+        self.current_track_tags.update_from_diff(current_track_tags);
+        self.volume.update_from_diff(volume);
+        self.buffering.update_from_diff(buffering);
+        self.track_duration.update_from_diff(track_duration);
+        self.track_position.update_from_diff(track_position);
+        self.ping_times.update_from_diff(ping_times);
     }
 }
 
-enum Msg {
-    WebsocketMessageReceived(MsgPack<Result<rradio_messages::Event>>),
-    WebsocketStatusChanged(WebSocketStatus),
-    SendCommand(Command),
+struct DisplayDuration(Duration);
+
+impl fmt::Display for DisplayDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let secs = self.0.as_secs();
+
+        write!(f, "{:02}:{:02}", secs / 60, secs % 60)
+    }
 }
 
-enum CurrentView {
-    Player,
-    Podcasts,
+enum AppCommand {
+    Command(rradio_messages::Command),
+    Event(Result<gloo_net::websocket::Message, gloo_net::websocket::WebSocketError>),
+    NoMoreEvents,
 }
 
-struct AppState {
-    link: ComponentLink<Self>,
-    connection: ConnectionState,
-    player_state: PlayerState,
-    current_view: CurrentView,
-}
-
-impl Component for AppState {
-    type Message = Msg;
-    type Properties = ();
-
-    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let host = yew::services::StorageService::new(yew::services::storage::Area::Local)
-            .ok()
-            .and_then(|storage| storage.restore::<Result<_>>("RRADIO_SERVER").ok())
-            .unwrap_or_else(|| yew::utils::host().unwrap());
-        let url = format!("ws://{}/api", host);
-        log::info!("Connecting to {}", url);
-        let connection = match WebSocketService::connect_binary(
-            &url,
-            link.callback(Msg::WebsocketMessageReceived),
-            link.callback(Msg::WebsocketStatusChanged),
-        ) {
-            Ok(task) => ConnectionState::HasConnection {
-                task,
-                is_connected: false,
-            },
-            Err(err) => {
-                log::error!("Could not connect to server: {:#}", err);
-                ConnectionState::NotConnected
+#[allow(non_snake_case)]
+#[inline_props]
+fn ConnectionStateView(cx: Scope, connection_state: ConnectionState) -> Element {
+    let connection_state_view = match connection_state {
+        ConnectionState::Connecting => Some(rsx! { "Connecting..." }),
+        ConnectionState::Connected => None,
+        ConnectionState::Disconnected => Some(rsx! { "RRadio has terminated" }),
+        ConnectionState::ConnectionError(err) => Some(rsx! { "{err}" }),
+    }
+    .and_then(|message| {
+        cx.render(rsx! {
+            header {
+                id: "connection-message",
+                output { message }
             }
-        };
+        })
+    });
 
-        let appname = yew::utils::document()
-            .location()
-            .and_then(|location| {
-                location
-                    .search()
-                    .map_err(|err| log::error!("No search: {:?}", err.as_string()))
-                    .ok()
-            })
-            .unwrap_or_default();
+    cx.render(rsx! { connection_state_view })
+}
 
-        let current_view = match appname.as_str() {
-            "?podcasts" => CurrentView::Podcasts,
-            _ => CurrentView::Player,
-        };
+#[allow(non_snake_case)]
+#[inline_props]
+fn Root(cx: Scope, app_view: AppView) -> Element {
+    let (connection_state, use_connection_state) =
+        use_state(&cx, || ConnectionState::Connecting).split();
+    let (player_state, use_player_state) = use_state(&cx, PlayerState::default).split();
 
-        Self {
-            link,
-            connection,
-            player_state: PlayerState::default(),
-            current_view,
-        }
-    }
+    use_coroutine::<rradio_messages::Command, _, _>(&cx, {
+        let player_state_store = use_player_state.clone();
+        |commands| {
+            {
+                let connection_state_store = use_connection_state.clone();
+                async move {
+                    let host = web_sys::window()
+                        .context("No Window!")?
+                        .location()
+                        .host()
+                        .map_err(|err| anyhow::anyhow!("No hostname: {:?}", err))?;
 
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        match msg {
-            Msg::WebsocketMessageReceived(MsgPack(msg)) => match msg {
-                Ok(rradio_messages::Event::ProtocolVersion(version)) => {
-                    if version != rradio_messages::VERSION {
-                        log::error!(
-                            "Bad message version. Mine: {}. Theirs: {}",
-                            rradio_messages::VERSION,
-                            version
-                        );
-                        self.connection = ConnectionState::IncompatibleVersion(version);
-                        true
-                    } else {
-                        false
+                    let (mut websocket_tx, websocket_rx) =
+                        gloo_net::websocket::futures::WebSocket::open_with_protocol(
+                            &format!("ws://{host}/api"),
+                            rradio_messages::API_VERSION_HEADER.trim(),
+                        )
+                        .map_err(|err| anyhow::anyhow!("Failed to open websocket: {err:?}"))?
+                        .split();
+
+                    connection_state_store.set(ConnectionState::Connected);
+
+                    let app_commands = futures_util::stream::select(
+                        commands.map(AppCommand::Command),
+                        websocket_rx
+                            .map(AppCommand::Event)
+                            .chain(futures_util::stream::once(async {
+                                AppCommand::NoMoreEvents
+                            })),
+                    );
+
+                    futures_util::pin_mut!(app_commands);
+
+                    while let Some(app_command) = app_commands.next().await {
+                        match app_command {
+                            AppCommand::Command(rradio_command) => {
+                                let mut buffer = Vec::new();
+                                rradio_command
+                                    .encode(&mut buffer)
+                                    .context("Failed to encode Command")?;
+
+                                websocket_tx
+                                    .send(gloo_net::websocket::Message::Bytes(buffer))
+                                    .await
+                                    .map_err(|err| {
+                                        anyhow::anyhow!("Failed to send websocket message: {err}")
+                                    })?;
+                            }
+                            AppCommand::Event(Err(
+                                gloo_net::websocket::WebSocketError::ConnectionClose(_),
+                            )) => break,
+                            AppCommand::Event(rradio_event) => {
+                                match rradio_event.map_err(|err| {
+                                    anyhow::anyhow!("Failed to receive websocket message: {err}")
+                                })? {
+                                    gloo_net::websocket::Message::Text(message) => {
+                                        tracing::warn!("Ignoring text message: {message:?}")
+                                    }
+                                    gloo_net::websocket::Message::Bytes(mut buffer) => {
+                                        match rradio_messages::Event::decode(&mut buffer)
+                                            .context("Failed to decode Event")?
+                                        {
+                                            rradio_messages::Event::PlayerStateChanged(diff) => {
+                                                player_state_store.with_mut(
+                                                    |current_player_state| {
+                                                        current_player_state.update_from_diff(diff);
+                                                    },
+                                                );
+                                            }
+                                            rradio_messages::Event::LogMessage(
+                                                rradio_messages::LogMessage::Error(error),
+                                            ) => tracing::error!("error: {error:#}"),
+                                        }
+                                    }
+                                }
+                            }
+                            AppCommand::NoMoreEvents => break,
+                        }
                     }
-                }
-                Ok(rradio_messages::Event::PlayerStateChanged(diff)) => {
-                    // log::info!("State Changes: {:?}", diff);
-                    self.player_state.update(diff);
-                    true
-                }
-                Ok(rradio_messages::Event::LogMessage(rradio_messages::LogMessage::Error(
-                    message,
-                ))) => {
-                    log::error!("{}", message);
-                    false
-                }
-                Err(err) => {
-                    log::error!("Bad Websocket message: {:#}", err);
-                    self.connection = ConnectionState::NotConnected;
-                    true
-                }
-            },
-            Msg::WebsocketStatusChanged(status) => match status {
-                WebSocketStatus::Opened => {
-                    log::info!("Websocket connection");
-                    if let ConnectionState::HasConnection { is_connected, .. } =
-                        &mut self.connection
-                    {
-                        *is_connected = true;
-                    }
 
-                    true
+                    connection_state_store.set(ConnectionState::Disconnected);
+
+                    Ok(())
                 }
-                WebSocketStatus::Closed => {
-                    log::info!("Websocket closed");
-                    self.connection = ConnectionState::NotConnected;
-                    true
-                }
-                WebSocketStatus::Error => {
-                    log::error!("Websocket Error");
-                    self.connection = ConnectionState::NotConnected;
-                    true
-                }
-            },
-            Msg::SendCommand(command) => {
-                if let ConnectionState::HasConnection {
-                    task,
-                    is_connected: true,
-                } = &mut self.connection
-                {
-                    task.send_binary(MsgPack(&command))
-                }
-                false
             }
+            .map(ConnectionState::handle_closed(use_connection_state.clone()))
         }
-    }
+    });
 
-    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        false
-    }
-
-    fn view(&self) -> Html {
-        let connection_state = match &self.connection {
-            ConnectionState::NotConnected => Some(Cow::Borrowed("❌Not Connected❌")),
-            ConnectionState::IncompatibleVersion(version) => Some(Cow::Owned(format!(
-                "❌Incompatible Version: Client = {}, Server = {}❌",
-                rradio_messages::VERSION,
-                version
-            ))),
-            ConnectionState::HasConnection {
-                is_connected: false,
-                ..
-            } => Some(Cow::Borrowed("Connecting")),
-            ConnectionState::HasConnection {
-                is_connected: true, ..
-            } => None,
-        };
-
-        let connection_header_visible = connection_state.as_ref().map(|_| "visible");
-        let connection_state = connection_state.unwrap_or_default();
-
-        let send_command = self.link.callback(Msg::SendCommand);
-
-        let current_view = match self.current_view {
-            CurrentView::Player => {
-                html! { <player::Player player_state=self.player_state.clone() send_command=send_command /> }
-            }
-            CurrentView::Podcasts => {
-                html! { <podcasts::Podcasts send_command=send_command /> }
-            }
-        };
-
-        html! {
-            <body class="app">
-                <header class=yew::classes!(connection_header_visible)><output>{connection_state}</output></header>
-                {current_view}
-            </body>
+    let app = match app_view {
+        AppView::PlayerState => {
+            rsx! { player_state_view::View { player_state: player_state.clone() } }
         }
-    }
+        AppView::Podcasts => rsx! { podcasts_view::View { } },
+        AppView::Debug => {
+            rsx! { debug_view::View { connection_state: connection_state.clone(), player_state: player_state.clone() } }
+        }
+    };
+
+    cx.render(rsx! {
+        ConnectionStateView { connection_state: connection_state.clone() }
+        nav {
+            a { href: "?player", "Player" },
+            a { href: "?podcasts", "Podcasts" }
+            a { href: "?debug", "Debug" }
+        }
+        app
+    })
 }
 
-pub fn main() {
-    wasm_logger::init(wasm_logger::Config::default());
+fn main() {
+    console_error_panic_hook::set_once();
 
-    yew::App::<AppState>::new().mount_as_body();
+    let max_level = gloo_storage::LocalStorage::raw()
+        .get("RRADIO_LOGGING")
+        .unwrap()
+        .map_or(tracing::Level::INFO, |level| {
+            level.parse().expect("Logging level")
+        });
+
+    tracing_wasm::set_as_global_default_with_config(
+        tracing_wasm::WASMLayerConfigBuilder::new()
+            .set_max_level(max_level)
+            .build(),
+    );
+
+    let app_view = match gloo_utils::window()
+        .location()
+        .search()
+        .expect("search")
+        .as_str()
+    {
+        "?podcast" | "?podcasts" => AppView::Podcasts,
+        "?debug" => AppView::Debug,
+        _ => AppView::PlayerState,
+    };
+
+    let root_element = "app";
+
+    let main = gloo_utils::document()
+        .get_element_by_id(root_element)
+        .expect(r#"no element "app""#);
+
+    main.set_class_name(app_view.classname());
+    main.set_inner_html("");
+
+    dioxus::web::launch_with_props(Root, RootProps { app_view }, |cfg| {
+        cfg.rootname(root_element)
+    });
 }

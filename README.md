@@ -1,22 +1,13 @@
 # RRadio Web Client
 
+Note that during the refactor of `rradio`, the web client depends on the development branch of `rradio`.
+
 ## Building
 
 This app uses [trunk]("https://github.com/thedodd/trunk") as its build system.
+To build, run the following from the project root
 
-## Pages
+    trunk build
 
-### Podcasts Interface - `/?podcasts`
-
-Enter a url to an RSS feed, and click on "Add Podcast" to add the podcast to the list.
-
-Then select a podcast to see its entries, and click on "Play" next to an item to play it.
-
-### Debug Interface - `/`
-
-Used to display debug information about the current state
-
-## Configuration
-
-By default, the app connects to the same host as the server hosting the web app.
-To override this, set the "RRADIO_SERVER" value in the Local Storage area of Web Storage in your browser.
+Then copy the files from the `dist` folder to the static file directory or `rradio`, or specify in `rradio`'s config file
+that the static files are found in the `dist` folder of the web app's repository.
