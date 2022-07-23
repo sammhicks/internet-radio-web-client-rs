@@ -225,6 +225,7 @@ pub fn View(cx: Scope) -> Element {
 
     cx.render(rsx! {
         div {
+            id: "new-podcast",
             label {
                 "Podcast URL: "
                 input {
@@ -243,6 +244,7 @@ pub fn View(cx: Scope) -> Element {
             }
         }
         div {
+            id: "select-podcast",
             style: "border-bottom: 1px solid black;",
             label {
                 "Select Podcast: "

@@ -5,16 +5,30 @@
     top: 0;
     bottom: 0;
 
-    display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    display: flex;
+    flex-flow: column nowrap;
 
-    >div,
-    >main,
-    >footer {
+    #new-podcast,
+    #select-podcast,
+    main,
+    footer {
         padding: 0.5em;
     }
 
+    #new-podcast,
+    #select-podcast {
+        display: flex;
+        flex-flow: row wrap;
+        justify-content: center;
+        align-items: center;
+
+        label {
+            text-align: center;
+        }
+    }
+
     main {
+        flex: 1;
         overflow-y: scroll;
 
         h1,

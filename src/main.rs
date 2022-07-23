@@ -149,11 +149,19 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
             {
                 let connection_state_store = use_connection_state.clone();
                 async move {
-                    let host = web_sys::window()
-                        .context("No Window!")?
-                        .location()
-                        .host()
-                        .map_err(|err| anyhow::anyhow!("No hostname: {:?}", err))?;
+                    let host = gloo_storage::LocalStorage::raw()
+                        .get_item("RRADIO_SERVER")
+                        .expect("unreachable: get_item does not throw an exception")
+                        .map_or_else(
+                            || {
+                                web_sys::window()
+                                    .context("No Window!")?
+                                    .location()
+                                    .host()
+                                    .map_err(|err| anyhow::anyhow!("No hostname: {:?}", err))
+                            },
+                            Ok,
+                        )?;
 
                     let (mut websocket_tx, websocket_rx) =
                         gloo_net::websocket::futures::WebSocket::open_with_protocol(
