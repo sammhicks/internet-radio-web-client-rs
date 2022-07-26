@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "internet-radio-web-client-rs"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",

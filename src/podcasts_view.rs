@@ -223,6 +223,8 @@ pub fn View(cx: Scope) -> Element {
         }
     };
 
+    let seek_offset = std::time::Duration::from_secs(10);
+
     cx.render(rsx! {
         div {
             id: "new-podcast",
@@ -259,9 +261,9 @@ pub fn View(cx: Scope) -> Element {
         }
         footer {
             style: "border-top: 1px solid black;",
-            button { onclick: move |_| commands.send(rradio_messages::Command::SmartPreviousItem), "⏪" }
+            button { onclick: move |_| commands.send(rradio_messages::Command::SeekBackwards(seek_offset)), "⏪" }
             button { onclick: move |_| commands.send(rradio_messages::Command::PlayPause), "⏯️" }
-            button { onclick: move |_| commands.send(rradio_messages::Command::NextItem), "⏩" }
+            button { onclick: move |_| commands.send(rradio_messages::Command::SeekForwards(seek_offset)), "⏩" }
         }
     })
 }
