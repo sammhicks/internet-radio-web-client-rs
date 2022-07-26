@@ -1,3 +1,5 @@
+#![allow(clippy::never_loop)]
+
 use std::{fmt, time::Duration};
 
 use anyhow::Context;
@@ -112,7 +114,6 @@ impl fmt::Display for DisplayDuration {
 enum AppCommand {
     Command(rradio_messages::Command),
     Event(Result<gloo_net::websocket::Message, gloo_net::websocket::WebSocketError>),
-    NoMoreEvents,
 }
 
 #[allow(non_snake_case)]
@@ -145,9 +146,9 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
 
     use_coroutine::<rradio_messages::Command, _, _>(&cx, {
         let player_state_store = use_player_state.clone();
-        |commands| {
+        |mut commands| {
             {
-                let connection_state_store = use_connection_state.clone();
+                let use_connection_state = use_connection_state.clone();
                 async move {
                     let host = gloo_storage::LocalStorage::raw()
                         .get_item("RRADIO_SERVER")
@@ -163,77 +164,102 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
                             Ok,
                         )?;
 
-                    let (mut websocket_tx, websocket_rx) =
-                        gloo_net::websocket::futures::WebSocket::open_with_protocol(
-                            &format!("ws://{host}/api"),
-                            rradio_messages::API_VERSION_HEADER.trim(),
-                        )
-                        .map_err(|err| anyhow::anyhow!("Failed to open websocket: {err:?}"))?
-                        .split();
+                    let api_url = format!("ws://{host}/api");
 
-                    connection_state_store.set(ConnectionState::Connected);
+                    let mut is_first_connection_attempt = true;
 
-                    let app_commands = futures_util::stream::select(
-                        commands.map(AppCommand::Command),
-                        websocket_rx
-                            .map(AppCommand::Event)
-                            .chain(futures_util::stream::once(async {
-                                AppCommand::NoMoreEvents
-                            })),
-                    );
+                    loop {
+                        let result = async {
+                            let (mut websocket_tx, websocket_rx) =
+                                gloo_net::websocket::futures::WebSocket::open_with_protocol(
+                                    &api_url,
+                                    rradio_messages::API_VERSION_HEADER.trim(),
+                                )
+                                .map_err(|err| {
+                                    anyhow::anyhow!("Failed to open websocket: {err:?}")
+                                })?
+                                .split();
 
-                    futures_util::pin_mut!(app_commands);
+                            is_first_connection_attempt = false;
+                            use_connection_state.set(ConnectionState::Connected);
 
-                    while let Some(app_command) = app_commands.next().await {
-                        match app_command {
-                            AppCommand::Command(rradio_command) => {
-                                let mut buffer = Vec::new();
-                                rradio_command
-                                    .encode(&mut buffer)
-                                    .context("Failed to encode Command")?;
+                            let app_commands = futures_util::stream::select(
+                                (&mut commands).map(AppCommand::Command),
+                                websocket_rx.map(AppCommand::Event),
+                            );
 
-                                websocket_tx
-                                    .send(gloo_net::websocket::Message::Bytes(buffer))
-                                    .await
-                                    .map_err(|err| {
-                                        anyhow::anyhow!("Failed to send websocket message: {err}")
-                                    })?;
-                            }
-                            AppCommand::Event(Err(
-                                gloo_net::websocket::WebSocketError::ConnectionClose(_),
-                            )) => break,
-                            AppCommand::Event(rradio_event) => {
-                                match rradio_event.map_err(|err| {
-                                    anyhow::anyhow!("Failed to receive websocket message: {err}")
-                                })? {
-                                    gloo_net::websocket::Message::Text(message) => {
-                                        tracing::warn!("Ignoring text message: {message:?}")
+                            futures_util::pin_mut!(app_commands);
+
+                            while let Some(app_command) = app_commands.next().await {
+                                match app_command {
+                                    AppCommand::Command(rradio_command) => {
+                                        let mut buffer = Vec::new();
+                                        rradio_command
+                                            .encode(&mut buffer)
+                                            .context("Failed to encode Command")?;
+
+                                        websocket_tx
+                                            .send(gloo_net::websocket::Message::Bytes(buffer))
+                                            .await
+                                            .map_err(|err| {
+                                                anyhow::anyhow!(
+                                                    "Failed to send websocket message: {err}"
+                                                )
+                                            })?;
                                     }
-                                    gloo_net::websocket::Message::Bytes(mut buffer) => {
-                                        match rradio_messages::Event::decode(&mut buffer)
-                                            .context("Failed to decode Event")?
-                                        {
-                                            rradio_messages::Event::PlayerStateChanged(diff) => {
-                                                player_state_store.with_mut(
-                                                    |current_player_state| {
-                                                        current_player_state.update_from_diff(diff);
-                                                    },
-                                                );
+                                    AppCommand::Event(Err(
+                                        gloo_net::websocket::WebSocketError::ConnectionClose(_),
+                                    )) => break,
+                                    AppCommand::Event(rradio_event) => {
+                                        match rradio_event.map_err(|err| {
+                                            anyhow::anyhow!(
+                                                "Failed to receive websocket message: {err}"
+                                            )
+                                        })? {
+                                            gloo_net::websocket::Message::Text(message) => {
+                                                tracing::warn!("Ignoring text message: {message:?}")
                                             }
-                                            rradio_messages::Event::LogMessage(
-                                                rradio_messages::LogMessage::Error(error),
-                                            ) => tracing::error!("error: {error:#}"),
+                                            gloo_net::websocket::Message::Bytes(mut buffer) => {
+                                                match rradio_messages::Event::decode(&mut buffer)
+                                                    .context("Failed to decode Event")?
+                                                {
+                                                    rradio_messages::Event::PlayerStateChanged(
+                                                        diff,
+                                                    ) => {
+                                                        player_state_store.with_mut(
+                                                            |current_player_state| {
+                                                                current_player_state
+                                                                    .update_from_diff(diff);
+                                                            },
+                                                        );
+                                                    }
+                                                    rradio_messages::Event::LogMessage(
+                                                        rradio_messages::LogMessage::Error(error),
+                                                    ) => tracing::error!("error: {error:#}"),
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                            AppCommand::NoMoreEvents => break,
+
+                            anyhow::Ok(())
                         }
+                        .await;
+
+                        match result {
+                            Ok(()) => return Ok(()),
+                            Err(err) if is_first_connection_attempt => return Err(err),
+                            Err(err) => {
+                                use_connection_state.set(ConnectionState::ConnectionError(
+                                    rradio_messages::arcstr::format!("{:#}", err),
+                                ));
+                            }
+                        }
+
+                        // Wait and then try to reconnect
+                        gloo_timers::future::sleep(std::time::Duration::from_secs(3)).await;
                     }
-
-                    connection_state_store.set(ConnectionState::Disconnected);
-
-                    Ok(())
                 }
             }
             .map(ConnectionState::handle_closed(use_connection_state.clone()))

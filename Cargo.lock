@@ -526,6 +526,7 @@ dependencies = [
  "futures-util",
  "gloo-net",
  "gloo-storage",
+ "gloo-timers",
  "gloo-utils",
  "rradio-messages",
  "rss",
@@ -741,8 +742,8 @@ dependencies = [
 
 [[package]]
 name = "rradio-messages"
-version = "0.29.0"
-source = "git+https://github.com/sammhicks/internet-radio-rs#a4e258b16c72606b1ffceb65a4623c489f7f3745"
+version = "0.31.0"
+source = "git+https://github.com/sammhicks/internet-radio-rs#1ff8ff890a41d1a8648d8251d9cbdf71b163fab1"
 dependencies = [
  "arcstr",
  "base64",
