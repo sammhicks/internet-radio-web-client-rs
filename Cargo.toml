@@ -13,6 +13,7 @@ anyhow = "1.0"
 console_error_panic_hook = "0.1"
 dioxus = { version = "0.2", features = [ "web" ] }
 futures-util = { version = "0.3", features = [ "sink" ] }
+gloo-dialogs = "0.1"
 gloo-net = { version = "0.2", features = [ "http", "websocket" ] }
 gloo-storage = "0.2"
 gloo-timers = { version = "0.2", features = [ "futures" ] }

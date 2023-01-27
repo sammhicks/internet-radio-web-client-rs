@@ -157,6 +157,31 @@ pub fn View(cx: Scope) -> Element {
         }
     };
 
+    let remove_current_podcast = move || {
+        if let Some(selected_podcast) = selected_podcast {
+            if gloo_dialogs::confirm(&format!(
+                "Are you sure you want to remove {}?",
+                selected_podcast.title
+            )) {
+                podcasts_store.with_mut(|podcasts| {
+                    podcasts.remove(selected_podcast_index);
+                    Podcast::save_podcasts(podcasts).ok();
+                    selected_podcast_index_store.set(0);
+                });
+            }
+        }
+    };
+
+    let remove_podcast = rsx! {
+        div {
+            button {
+                "type": "button",
+                onclick: move |_| remove_current_podcast(),
+                "Remove Podcast"
+            }
+        }
+    };
+
     let podcast_options = podcasts.iter().enumerate().map(|(index, option)| {
         let is_selected = selected_podcast_index == index;
         rsx! {
@@ -258,6 +283,7 @@ pub fn View(cx: Scope) -> Element {
         }
         main {
             fetched_podcast
+            remove_podcast
         }
         footer {
             style: "border-top: 1px solid black;",
