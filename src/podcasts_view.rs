@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -38,7 +40,7 @@ impl Podcast {
         let response = gloo_net::http::Request::get(url)
             .send()
             .await
-            .with_context(|| format!("Failed to fetch {}", url))?;
+            .with_context(|| format!("Failed to fetch {url}"))?;
 
         if response.status() != 200 {
             anyhow::bail!(
@@ -50,7 +52,7 @@ impl Podcast {
         }
 
         rss::Channel::from_str(&response.text().await?)
-            .with_context(|| format!("Failed to parse RSS from {:?}", url))
+            .with_context(|| format!("Failed to parse RSS from {url:?}"))
     }
 }
 
@@ -73,7 +75,7 @@ fn FetchedPodcastItem<'a>(cx: Scope<'a>, playlist_title: &'a str, item: &'a rss:
                         title: String::from(item.title().unwrap_or(playlist_title)),
                         url: enclosure.url.clone(),
                     }],
-                })
+                });
             };
             rsx! {
                 div {
@@ -244,7 +246,7 @@ pub fn View(cx: Scope) -> Element {
                         new_podcast_error_store.set(format!("{err:#}"));
                     }
                 }
-            })
+            });
         }
     };
 
