@@ -18,6 +18,7 @@ use update_from_diff::UpdateFromDiff;
 mod debug_view;
 mod player_state_view;
 mod podcasts_view;
+mod track_position_slider;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppView {
@@ -111,6 +112,19 @@ impl fmt::Display for DisplayDuration {
     }
 }
 
+fn handle_input<T, F>(f: F, value: &str, commands: &CoroutineHandle<rradio_messages::Command>)
+where
+    T: std::str::FromStr,
+    T::Err: fmt::Display,
+    F: Fn(T) -> rradio_messages::Command,
+{
+    match T::from_str(value) {
+        Ok(value) => commands.send(f(value)),
+        Err(err) => {
+            tracing::warn!("Failed to handle input value {value:?}: {err}")
+        }
+    }
+}
 enum AppCommand {
     Command(rradio_messages::Command),
     Event(Result<gloo_net::websocket::Message, gloo_net::websocket::WebSocketError>),
@@ -270,7 +284,7 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
         AppView::PlayerState => {
             rsx! { player_state_view::View { player_state: player_state.clone() } }
         }
-        AppView::Podcasts => rsx! { podcasts_view::View { } },
+        AppView::Podcasts => rsx! { podcasts_view::View { player_state: player_state.clone() } },
         AppView::Debug => {
             rsx! { debug_view::View { connection_state: connection_state.clone(), player_state: player_state.clone() } }
         }

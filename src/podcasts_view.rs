@@ -8,6 +8,11 @@ use dioxus::prelude::*;
 use gloo_storage::Storage;
 use rradio_messages::ArcStr;
 
+use crate::{
+    track_position_slider::{TrackPositionSlider, TrackPositionText},
+    PlayerState,
+};
+
 use super::FastEqRc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,7 +125,7 @@ fn FetchedPodcast(cx: Scope, fetched_podcast: FastEqRc<rss::Channel>) -> Element
 
 #[allow(non_snake_case)]
 #[inline_props]
-pub fn View(cx: Scope) -> Element {
+pub fn View(cx: Scope, player_state: PlayerState) -> Element {
     let commands = use_coroutine_handle::<rradio_messages::Command>(&cx).expect("Commands");
 
     let (new_podcast, new_podcast_store) = use_state(&cx, String::new).split();
@@ -250,6 +255,25 @@ pub fn View(cx: Scope) -> Element {
         }
     };
 
+    let track_title = player_state
+        .current_track_tags
+        .as_ref()
+        .as_ref()
+        .and_then(|tags| tags.title.clone())
+        .or_else(|| {
+            player_state
+                .current_station
+                .as_ref()
+                .as_ref()
+                .and_then(|station| station.tracks.as_ref())
+                .and_then(|tracks| tracks.get(player_state.current_track_index))
+                .and_then(|track| track.title.clone())
+        })
+        .unwrap_or_default();
+
+    let track_position =
+        TrackPositionText::new(&player_state.track_position, &player_state.track_duration);
+
     let seek_offset = std::time::Duration::from_secs(10);
 
     cx.render(rsx! {
@@ -284,11 +308,16 @@ pub fn View(cx: Scope) -> Element {
             }
         }
         main {
+            style: "border-bottom: 1px solid black;",
             fetched_podcast
             remove_podcast
         }
+        TrackPositionSlider { track_position: track_position }
+        div {
+            style: "text-align: center;",
+            "{track_title}"
+        }
         footer {
-            style: "border-top: 1px solid black;",
             button { onclick: move |_| commands.send(rradio_messages::Command::SeekBackwards(seek_offset)), "⏪" }
             button { onclick: move |_| commands.send(rradio_messages::Command::PlayPause), "⏯️" }
             button { onclick: move |_| commands.send(rradio_messages::Command::SeekForwards(seek_offset)), "⏩" }

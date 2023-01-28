@@ -1,24 +1,12 @@
-use std::{fmt, time::Duration};
-
 use dioxus::prelude::*;
 
 use rradio_messages::Track;
 
-use crate::{DisplayDuration, FastEqRc, PlayerState};
-
-fn handle_input<T, F>(f: F, value: &str, commands: &CoroutineHandle<rradio_messages::Command>)
-where
-    T: std::str::FromStr,
-    T::Err: fmt::Display,
-    F: Fn(T) -> rradio_messages::Command,
-{
-    match T::from_str(value) {
-        Ok(value) => commands.send(f(value)),
-        Err(err) => {
-            tracing::warn!("Failed to handle input value {value:?}: {err}")
-        }
-    }
-}
+use crate::{
+    handle_input,
+    track_position_slider::{TrackPositionSlider, TrackPositionText},
+    FastEqRc, PlayerState,
+};
 
 #[allow(non_snake_case)]
 #[inline_props]
@@ -167,84 +155,12 @@ fn Station(
     }
 }
 
-#[derive(Clone, Copy)]
-enum TrackPositionText {
-    NoTrack,
-    Track {
-        position: Duration,
-        duration: Duration,
-    },
-}
-
-impl fmt::Display for TrackPositionText {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            TrackPositionText::NoTrack => write!(f, "--"),
-            TrackPositionText::Track { position, duration } => write!(
-                f,
-                "{} - {}",
-                DisplayDuration(position),
-                DisplayDuration(duration)
-            ),
-        }
-    }
-}
-
-struct TrackPositionSliderValues {
-    disabled: bool,
-    position: u64,
-    duration: u64,
-}
-
-impl From<TrackPositionText> for TrackPositionSliderValues {
-    fn from(track_position_text: TrackPositionText) -> Self {
-        match track_position_text {
-            TrackPositionText::NoTrack => TrackPositionSliderValues {
-                disabled: true,
-                position: 0,
-                duration: 100,
-            },
-            TrackPositionText::Track { position, duration } => TrackPositionSliderValues {
-                disabled: false,
-                position: position.as_secs(),
-                duration: duration.as_secs(),
-            },
-        }
-    }
-}
-
 #[allow(non_snake_case)]
 #[inline_props]
 pub fn View(cx: Scope, player_state: PlayerState) -> Element {
     tracing::debug!(?player_state, "PlayerStateView");
 
     let commands = use_coroutine_handle::<rradio_messages::Command>(&cx).expect("Commands");
-
-    let track_position = player_state
-        .track_position
-        .zip(player_state.track_duration)
-        .map_or(TrackPositionText::NoTrack, |(position, duration)| {
-            TrackPositionText::Track { position, duration }
-        });
-
-    let track_position_slider = {
-        let TrackPositionSliderValues {
-            disabled,
-            position,
-            duration,
-        } = track_position.into();
-
-        rsx! {
-            input {
-                "type": "range",
-                disabled: "{disabled}",
-                min: "0",
-                max: "{duration}",
-                value: "{position}",
-                onchange: move |ev| handle_input(|new_position_secs| rradio_messages::Command::SeekTo(Duration::from_secs(new_position_secs)), &ev.value, commands),
-            }
-        }
-    };
 
     let volume_min = rradio_messages::VOLUME_MIN;
     let volume_max = rradio_messages::VOLUME_ZERO_DB;
@@ -257,6 +173,9 @@ pub fn View(cx: Scope, player_state: PlayerState) -> Element {
         .and_then(|tracks| tracks.get(player_state.current_track_index))
         .map(|current_track| rsx! { CurrentTrack { track: current_track.clone(), tags: player_state.current_track_tags.clone() } });
 
+    let track_position =
+        TrackPositionText::new(&player_state.track_position, &player_state.track_duration);
+
     cx.render(rsx! {
         fieldset {
             id: "current-track-container",
@@ -264,7 +183,7 @@ pub fn View(cx: Scope, player_state: PlayerState) -> Element {
             current_track
         }
         Station { station: player_state.current_station.clone(), current_track_index: player_state.current_track_index }
-        track_position_slider
+        TrackPositionSlider { track_position: track_position }
         footer {
             div {
                 class: "expand center-single-child",
