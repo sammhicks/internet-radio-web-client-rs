@@ -113,6 +113,7 @@ pub fn View(cx: Scope, connection_state: ConnectionState, player_state: PlayerSt
         pause_before_playing,
         current_track_index,
         current_track_tags,
+        is_muted,
         volume,
         buffering,
         track_duration,
@@ -125,6 +126,7 @@ pub fn View(cx: Scope, connection_state: ConnectionState, player_state: PlayerSt
             dt { "Pipeline State: {pipeline_state:?}" }
             dt { "Pause Before Playing: {pause_before_playing:?}" }
             dt { "Current Track Index: {current_track_index:?}" }
+            dt { "Is Muted: {is_muted:?}" }
             dt { "Volume: {volume:?}" }
             dt { "Buffering: {buffering:?}" }
             dt { "Track Duration: {track_duration:?}" }

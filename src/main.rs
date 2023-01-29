@@ -65,6 +65,7 @@ pub struct PlayerState {
     pub pause_before_playing: Option<Duration>,
     pub current_track_index: usize,
     pub current_track_tags: FastEqRc<Option<rradio_messages::TrackTags>>,
+    pub is_muted: bool,
     pub volume: i32,
     pub buffering: u8,
     pub track_duration: Option<Duration>,
@@ -80,6 +81,7 @@ impl UpdateFromDiff<rradio_messages::PlayerStateDiff> for PlayerState {
             pause_before_playing,
             current_track_index,
             current_track_tags,
+            is_muted,
             volume,
             buffering,
             track_duration,
@@ -94,6 +96,7 @@ impl UpdateFromDiff<rradio_messages::PlayerStateDiff> for PlayerState {
         self.current_track_index
             .update_from_diff(current_track_index);
         self.current_track_tags.update_from_diff(current_track_tags);
+        self.is_muted.update_from_diff(is_muted);
         self.volume.update_from_diff(volume);
         self.buffering.update_from_diff(buffering);
         self.track_duration.update_from_diff(track_duration);

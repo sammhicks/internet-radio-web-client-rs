@@ -73,7 +73,7 @@ fn FetchedPodcastItem<'a>(cx: Scope<'a>, playlist_title: &'a str, item: &'a rss:
 
     let link = match item.enclosure() {
         Some(enclosure) => {
-            let play_track = move |_: dioxus::core::UiEvent<dioxus::events::MouseData>| {
+            let play_track = move |_| {
                 commands.send(rradio_messages::Command::SetPlaylist {
                     title: String::from(*playlist_title),
                     tracks: vec![rradio_messages::SetPlaylistTrack {
