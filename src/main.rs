@@ -115,7 +115,7 @@ impl fmt::Display for DisplayDuration {
     }
 }
 
-fn handle_input<T, F>(f: F, value: &str, commands: &CoroutineHandle<rradio_messages::Command>)
+fn handle_input<T, F>(f: F, value: &str, commands: &Coroutine<rradio_messages::Command>)
 where
     T: std::str::FromStr,
     T::Err: fmt::Display,
@@ -340,7 +340,9 @@ fn main() {
     main.set_class_name(app_view.classname());
     main.set_inner_html("");
 
-    dioxus::web::launch_with_props(Root, RootProps { app_view }, |cfg| {
-        cfg.rootname(root_element)
-    });
+    dioxus_web::launch_with_props(
+        Root,
+        RootProps { app_view },
+        dioxus_web::Config::new().rootname(root_element),
+    );
 }
