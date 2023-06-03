@@ -235,11 +235,35 @@ pub fn View(cx: Scope, player_state: PlayerState) -> Element {
                 match Podcast::fetch(url.as_str()).await {
                     Ok(podcast) => {
                         let mut current_podcasts = podcasts_store.current().as_ref().clone();
-                        let new_selected_podcast_index = current_podcasts.len();
                         current_podcasts.push(Podcast {
                             title: podcast.title.into(),
                             url: url.as_str().into(),
                         });
+
+                        current_podcasts.sort_by(|a, b| {
+                            use std::cmp::Ordering;
+
+                            let mut a = a.title.chars().flat_map(char::to_lowercase);
+                            let mut b = b.title.chars().flat_map(char::to_lowercase);
+
+                            loop {
+                                return match (a.next(), b.next()) {
+                                    (None, None) => Ordering::Equal,
+                                    (Some(_), None) => Ordering::Greater,
+                                    (None, Some(_)) => Ordering::Less,
+                                    (Some(a), Some(b)) if a == b => continue,
+                                    (Some(a), Some(b)) => a.cmp(&b),
+                                };
+                            }
+                        });
+
+                        let new_selected_podcast_index = current_podcasts
+                            .iter()
+                            .enumerate()
+                            .find_map(|(index, podcast)| {
+                                (podcast.url.as_str() == url.as_str()).then_some(index)
+                            })
+                            .unwrap_or_default();
 
                         if let Ok(()) = Podcast::save_podcasts(&current_podcasts) {
                             new_podcast_store.set(String::new());
