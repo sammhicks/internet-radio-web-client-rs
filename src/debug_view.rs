@@ -1,13 +1,12 @@
 use dioxus::prelude::*;
 
-use rradio_messages::{Station, Track, TrackTags};
+use rradio_messages::{CurrentStation, Track, TrackTags};
 
 use crate::ConnectionState;
 
 use super::{FastEqRc, PlayerState};
 
-#[allow(non_snake_case)]
-#[inline_props]
+#[component]
 fn CurrentTrackTagsView(cx: Scope, current_track_tags: FastEqRc<Option<TrackTags>>) -> Element {
     cx.render(match current_track_tags.as_ref() {
         Some(TrackTags {
@@ -32,8 +31,7 @@ fn CurrentTrackTagsView(cx: Scope, current_track_tags: FastEqRc<Option<TrackTags
     })
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
+#[component]
 fn TrackView<'a>(cx: Scope<'a>, track: &'a Track, is_current: bool) -> Element<'a> {
     let Track {
         title,
@@ -55,54 +53,52 @@ fn TrackView<'a>(cx: Scope<'a>, track: &'a Track, is_current: bool) -> Element<'
     })
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
+#[component]
 fn CurrentStationView(
     cx: Scope,
-    current_station: FastEqRc<Option<Station>>,
+    current_station: FastEqRc<CurrentStation>,
     current_track_index: usize,
 ) -> Element {
     cx.render(match current_station.as_ref() {
-        Some(Station {
+        CurrentStation::NoStation => rsx! { dd { "None" } },
+        CurrentStation::FailedToPlayStation { error } => {
+            rsx! { dd { "Failed to play station: {error}" } }
+        }
+        CurrentStation::PlayingStation {
             index,
             source_type,
             title,
             tracks,
-        }) => {
-            let tracks = match tracks {
-                Some(tracks) => {
-                    let tracks = tracks.iter().enumerate().map(|(index, track)| {
-                        let is_current = index == *current_track_index;
-                        rsx! { TrackView { key: "{index}", track: track, is_current: is_current, } }
-                    });
+        } => {
+            let tracks = tracks
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .enumerate()
+                .map(|(index, track)| {
+                    let is_current = index == *current_track_index;
+                    rsx! { TrackView { key: "{index}", track: track, is_current: is_current, } }
+                });
 
-                    rsx! {
-                        "Some ("
-                        dl {
-                            dd {
-                                dl { tracks}
-                            }
-                        }
-                        ")"
-                    }
-                }
-                None => rsx! { "None" },
-            };
-
-            rsx! {
+            rsx!(
                 dd { "Index: {index:?}" }
                 dd { "Source Type: {source_type:?}" }
                 dd { "Title: {title:?}" }
-                dd { "Tracks: " tracks }
-            }
+                dd {
+                    "Tracks: "
+                    dl {
+                        dd {
+                            dl { tracks}
+                        }
+                    }
+                }
+            )
         }
-        None => rsx! { dd { "None" } },
     })
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
-pub fn View(cx: Scope, connection_state: ConnectionState, player_state: PlayerState) -> Element {
+#[component]
+pub fn view(cx: Scope, connection_state: ConnectionState, player_state: PlayerState) -> Element {
     if let ConnectionState::Connecting = connection_state {
         return None;
     }
@@ -119,6 +115,7 @@ pub fn View(cx: Scope, connection_state: ConnectionState, player_state: PlayerSt
         track_duration,
         track_position,
         ping_times,
+        latest_error,
     } = player_state;
 
     cx.render(rsx! {
@@ -136,6 +133,7 @@ pub fn View(cx: Scope, connection_state: ConnectionState, player_state: PlayerSt
             CurrentTrackTagsView { current_track_tags: current_track_tags.clone() }
             dt { "Current Station" }
             CurrentStationView { current_station: current_station.clone(), current_track_index: *current_track_index }
+            dt { "Latest Error: {latest_error:?}" }
         }
     })
 }

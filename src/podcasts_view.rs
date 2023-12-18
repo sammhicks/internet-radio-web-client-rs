@@ -1,5 +1,3 @@
-#![warn(clippy::pedantic)]
-
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -61,10 +59,13 @@ impl Podcast {
     }
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
-fn FetchedPodcastItem<'a>(cx: Scope<'a>, playlist_title: &'a str, item: &'a rss::Item) -> Element {
-    let commands = use_coroutine_handle::<rradio_messages::Command>(&cx).expect("Commands");
+#[component]
+fn FetchedPodcastItemView<'a>(
+    cx: Scope<'a>,
+    playlist_title: &'a str,
+    item: &'a rss::Item,
+) -> Element {
+    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
 
     let title = item.title().unwrap_or("No Title");
     let description = item
@@ -103,9 +104,8 @@ fn FetchedPodcastItem<'a>(cx: Scope<'a>, playlist_title: &'a str, item: &'a rss:
     })
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
-fn FetchedPodcast(cx: Scope, fetched_podcast: FastEqRc<rss::Channel>) -> Element {
+#[component]
+fn FetchedPodcastView(cx: Scope, fetched_podcast: FastEqRc<rss::Channel>) -> Element {
     let title = fetched_podcast.title();
     let description = fetched_podcast.description();
 
@@ -114,7 +114,7 @@ fn FetchedPodcast(cx: Scope, fetched_podcast: FastEqRc<rss::Channel>) -> Element
         .items()
         .iter()
         .enumerate()
-        .map(|(index, item)| rsx! { FetchedPodcastItem { key: "{index}", playlist_title: title, item: item } });
+        .map(|(index, item)| rsx! { FetchedPodcastItemView { key: "{index}", playlist_title: title, item: item } });
 
     cx.render(rsx! {
         h1 { "{title}" }
@@ -123,20 +123,18 @@ fn FetchedPodcast(cx: Scope, fetched_podcast: FastEqRc<rss::Channel>) -> Element
     })
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
-pub fn View(cx: Scope, player_state: PlayerState) -> Element {
-    let commands = use_coroutine_handle::<rradio_messages::Command>(&cx).expect("Commands");
+#[component]
+pub fn view(cx: Scope, player_state: PlayerState) -> Element {
+    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
 
-    let (new_podcast, new_podcast_store) = use_state(&cx, String::new).split();
-    let (new_podcast_error, new_podcast_error_store) = use_state(&cx, String::new).split();
+    let (new_podcast, new_podcast_store) = use_state(cx, String::new).split();
+    let (new_podcast_error, new_podcast_error_store) = use_state(cx, String::new).split();
 
-    let (podcasts, podcasts_store) = use_state(&cx, Podcast::load_podcasts).split();
-    let (&selected_podcast_index, selected_podcast_index_store) =
-        use_state(&cx, || 0_usize).split();
+    let (podcasts, podcasts_store) = use_state(cx, Podcast::load_podcasts).split();
+    let (&selected_podcast_index, selected_podcast_index_store) = use_state(cx, || 0_usize).split();
     let selected_podcast = podcasts.get(selected_podcast_index);
 
-    let fetched_podcast = use_future(&cx, (podcasts_store, selected_podcast_index_store), {
+    let fetched_podcast = use_future(cx, (podcasts_store, selected_podcast_index_store), {
         move |(podcasts_store, selected_podcast_index_store)| async move {
             let podcasts = podcasts_store.current();
 
@@ -160,7 +158,7 @@ pub fn View(cx: Scope, player_state: PlayerState) -> Element {
         Some(Err(err)) => rsx! { "{err:#}" },
         Some(Ok(None)) => rsx! { "" },
         Some(Ok(Some(fetched_podcast))) => {
-            rsx! { FetchedPodcast { fetched_podcast: fetched_podcast.clone() } }
+            rsx! { FetchedPodcastView { fetched_podcast: fetched_podcast.clone() } }
         }
     };
 
@@ -284,14 +282,14 @@ pub fn View(cx: Scope, player_state: PlayerState) -> Element {
         .as_ref()
         .as_ref()
         .and_then(|tags| tags.title.clone())
-        .or_else(|| {
-            player_state
-                .current_station
-                .as_ref()
-                .as_ref()
-                .and_then(|station| station.tracks.as_ref())
-                .and_then(|tracks| tracks.get(player_state.current_track_index))
-                .and_then(|track| track.title.clone())
+        .or_else(|| match player_state.current_station.as_ref() {
+            rradio_messages::CurrentStation::PlayingStation {
+                tracks: Some(tracks),
+                ..
+            } => tracks
+                .get(player_state.current_track_index)
+                .and_then(|track| track.title.clone()),
+            _ => None,
         })
         .unwrap_or_default();
 

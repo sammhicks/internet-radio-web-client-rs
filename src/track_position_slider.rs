@@ -60,10 +60,9 @@ impl From<TrackPositionText> for TrackPositionSliderValues {
     }
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
+#[component]
 pub fn TrackPositionSlider(cx: Scope, track_position: TrackPositionText) -> Element {
-    let commands = use_coroutine_handle::<rradio_messages::Command>(&cx).expect("Commands");
+    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
 
     let TrackPositionSliderValues {
         disabled,

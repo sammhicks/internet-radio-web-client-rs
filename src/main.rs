@@ -1,4 +1,5 @@
-#![allow(clippy::never_loop)]
+#![warn(clippy::pedantic)]
+#![allow(clippy::ignored_unit_patterns)]
 
 use std::{fmt, time::Duration};
 
@@ -61,7 +62,7 @@ impl ConnectionState {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlayerState {
     pub pipeline_state: rradio_messages::PipelineState,
-    pub current_station: FastEqRc<Option<rradio_messages::Station>>,
+    pub current_station: FastEqRc<rradio_messages::CurrentStation>,
     pub pause_before_playing: Option<Duration>,
     pub current_track_index: usize,
     pub current_track_tags: FastEqRc<Option<rradio_messages::TrackTags>>,
@@ -71,6 +72,7 @@ pub struct PlayerState {
     pub track_duration: Option<Duration>,
     pub track_position: Option<Duration>,
     pub ping_times: rradio_messages::PingTimes,
+    pub latest_error: FastEqRc<Option<rradio_messages::LatestError>>,
 }
 
 impl UpdateFromDiff<rradio_messages::PlayerStateDiff> for PlayerState {
@@ -87,6 +89,7 @@ impl UpdateFromDiff<rradio_messages::PlayerStateDiff> for PlayerState {
             track_duration,
             track_position,
             ping_times,
+            latest_error,
         } = diff;
 
         self.pipeline_state.update_from_diff(pipeline_state);
@@ -102,6 +105,7 @@ impl UpdateFromDiff<rradio_messages::PlayerStateDiff> for PlayerState {
         self.track_duration.update_from_diff(track_duration);
         self.track_position.update_from_diff(track_position);
         self.ping_times.update_from_diff(ping_times);
+        self.latest_error.update_from_diff(latest_error);
     }
 }
 
@@ -124,7 +128,7 @@ where
     match T::from_str(value) {
         Ok(value) => commands.send(f(value)),
         Err(err) => {
-            tracing::warn!("Failed to handle input value {value:?}: {err}")
+            tracing::warn!("Failed to handle input value {value:?}: {err}");
         }
     }
 }
@@ -133,8 +137,7 @@ enum AppCommand {
     Event(Result<gloo_net::websocket::Message, gloo_net::websocket::WebSocketError>),
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
+#[component]
 fn ConnectionStateView(cx: Scope, connection_state: ConnectionState) -> Element {
     let connection_state_view = match connection_state {
         ConnectionState::Connecting => Some(rsx! { "Connecting..." }),
@@ -154,14 +157,13 @@ fn ConnectionStateView(cx: Scope, connection_state: ConnectionState) -> Element 
     cx.render(rsx! { connection_state_view })
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
-fn Root(cx: Scope, app_view: AppView) -> Element {
+#[component]
+fn RootView(cx: Scope, app_view: AppView) -> Element {
     let (connection_state, use_connection_state) =
-        use_state(&cx, || ConnectionState::Connecting).split();
-    let (player_state, use_player_state) = use_state(&cx, PlayerState::default).split();
+        use_state(cx, || ConnectionState::Connecting).split();
+    let (player_state, use_player_state) = use_state(cx, PlayerState::default).split();
 
-    use_coroutine::<rradio_messages::Command, _, _>(&cx, {
+    use_coroutine::<rradio_messages::Command, _, _>(cx, {
         let player_state_store = use_player_state.clone();
         |mut commands| {
             {
@@ -226,7 +228,9 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
                                     }
                                     AppCommand::Event(Err(
                                         gloo_net::websocket::WebSocketError::ConnectionClose(_),
-                                    )) => break,
+                                    )) => {
+                                        break;
+                                    }
                                     AppCommand::Event(rradio_event) => {
                                         match rradio_event.map_err(|err| {
                                             anyhow::anyhow!(
@@ -234,7 +238,9 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
                                             )
                                         })? {
                                             gloo_net::websocket::Message::Text(message) => {
-                                                tracing::warn!("Ignoring text message: {message:?}")
+                                                tracing::warn!(
+                                                    "Ignoring text message: {message:?}"
+                                                );
                                             }
                                             gloo_net::websocket::Message::Bytes(mut buffer) => {
                                                 match rradio_messages::Event::decode(&mut buffer)
@@ -250,9 +256,6 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
                                                             },
                                                         );
                                                     }
-                                                    rradio_messages::Event::LogMessage(
-                                                        rradio_messages::LogMessage::Error(error),
-                                                    ) => tracing::error!("error: {error:#}"),
                                                 }
                                             }
                                         }
@@ -260,7 +263,7 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
                                 }
                             }
 
-                            anyhow::Ok(())
+                            Ok(())
                         }
                         .await;
 
@@ -285,11 +288,11 @@ fn Root(cx: Scope, app_view: AppView) -> Element {
 
     let app = match app_view {
         AppView::PlayerState => {
-            rsx! { player_state_view::View { player_state: player_state.clone() } }
+            rsx! { player_state_view::view { player_state: player_state.clone() } }
         }
-        AppView::Podcasts => rsx! { podcasts_view::View { player_state: player_state.clone() } },
+        AppView::Podcasts => rsx! { podcasts_view::view { player_state: player_state.clone() } },
         AppView::Debug => {
-            rsx! { debug_view::View { connection_state: connection_state.clone(), player_state: player_state.clone() } }
+            rsx! { debug_view::view { connection_state: connection_state.clone(), player_state: player_state.clone() } }
         }
     };
 
@@ -341,8 +344,8 @@ fn main() {
     main.set_inner_html("");
 
     dioxus_web::launch_with_props(
-        Root,
-        RootProps { app_view },
+        RootView,
+        RootViewProps { app_view },
         dioxus_web::Config::new().rootname(root_element),
     );
 }

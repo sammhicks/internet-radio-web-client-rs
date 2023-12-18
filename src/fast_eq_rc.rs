@@ -49,7 +49,7 @@ impl<T> PartialEq for FastEqRc<T> {
 impl<T> crate::update_from_diff::UpdateFromDiff<Option<T>> for FastEqRc<T> {
     fn update_from_diff(&mut self, diff: Option<T>) {
         if let Some(new_value) = diff {
-            *self = FastEqRc::new(new_value)
+            *self = FastEqRc::new(new_value);
         }
     }
 }
