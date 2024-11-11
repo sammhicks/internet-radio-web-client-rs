@@ -61,23 +61,23 @@ impl From<TrackPositionText> for TrackPositionSliderValues {
 }
 
 #[component]
-pub fn TrackPositionSlider(cx: Scope, track_position: TrackPositionText) -> Element {
-    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
+pub fn TrackPositionSlider(track_position: TrackPositionText) -> Element {
+    let commands = use_coroutine_handle::<rradio_messages::Command>();
 
     let TrackPositionSliderValues {
         disabled,
         position,
         duration,
-    } = TrackPositionSliderValues::from(*track_position);
+    } = TrackPositionSliderValues::from(track_position);
 
-    cx.render(rsx! {
+    rsx! {
         input {
             "type": "range",
             disabled: "{disabled}",
             min: "0",
             max: "{duration}",
             value: "{position}",
-            onchange: move |ev| handle_input(|new_position_secs| rradio_messages::Command::SeekTo(Duration::from_secs(new_position_secs)), &ev.value, commands),
+            onchange: move |ev| handle_input(|new_position_secs| rradio_messages::Command::SeekTo(Duration::from_secs(new_position_secs)), &ev.value(), &commands),
         }
-    })
+    }
 }

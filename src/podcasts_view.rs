@@ -4,7 +4,6 @@ use anyhow::Context;
 use dioxus::prelude::*;
 
 use gloo_storage::Storage;
-use rradio_messages::ArcStr;
 
 use crate::{
     track_position_slider::{TrackPositionSlider, TrackPositionText},
@@ -15,30 +14,11 @@ use super::FastEqRc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Podcast {
-    title: ArcStr,
-    url: ArcStr,
+    title: String,
+    url: String,
 }
 
 impl Podcast {
-    const STORAGE_KEY: &'static str = "RRADIO_PODCASTS";
-
-    fn load_podcasts() -> Vec<Podcast> {
-        match gloo_storage::LocalStorage::get(Self::STORAGE_KEY) {
-            Ok(podcasts) => podcasts,
-            Err(gloo_storage::errors::StorageError::KeyNotFound(_)) => Vec::new(),
-            Err(err) => {
-                tracing::error!("Failed to load {}: {}", Self::STORAGE_KEY, err);
-                Vec::new()
-            }
-        }
-    }
-
-    fn save_podcasts(podcasts: &[Podcast]) -> Result<(), ()> {
-        gloo_storage::LocalStorage::set(Self::STORAGE_KEY, podcasts).map_err(|err| {
-            tracing::error!("Failed to save podcasts_list: {}", err);
-        })
-    }
-
     async fn fetch(url: &str) -> anyhow::Result<rss::Channel> {
         let response = gloo_net::http::Request::get(url)
             .send()
@@ -59,26 +39,53 @@ impl Podcast {
     }
 }
 
-#[component]
-fn FetchedPodcastItemView<'a>(
-    cx: Scope<'a>,
-    playlist_title: &'a str,
-    item: &'a rss::Item,
-) -> Element {
-    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
+struct Podcasts;
 
-    let title = item.title().unwrap_or("No Title");
+impl Podcasts {
+    const STORAGE_KEY: &'static str = "RRADIO_PODCASTS";
+
+    fn load() -> Vec<Podcast> {
+        match gloo_storage::LocalStorage::get(Self::STORAGE_KEY) {
+            Ok(podcasts) => podcasts,
+            Err(gloo_storage::errors::StorageError::KeyNotFound(_)) => Vec::new(),
+            Err(err) => {
+                tracing::error!("Failed to load {}: {}", Self::STORAGE_KEY, err);
+                Vec::new()
+            }
+        }
+    }
+}
+
+trait SavePodcastsExt {
+    fn save(&self);
+}
+
+impl SavePodcastsExt for [Podcast] {
+    fn save(&self) {
+        if let Err(err) = gloo_storage::LocalStorage::set(Podcasts::STORAGE_KEY, self) {
+            tracing::error!("Failed to save podcasts_list: {}", err);
+        }
+    }
+}
+
+#[component]
+fn FetchedPodcastItemView(playlist_title: String, item: rss::Item) -> Element {
+    let commands = use_coroutine_handle::<rradio_messages::Command>();
+
+    let rss_title = item.title.as_deref().unwrap_or("No Title");
     let description = item
-        .description()
+        .description
         .map(|description| rsx! { p { "{description}" } });
 
-    let link = match item.enclosure() {
+    let link = match item.enclosure {
         Some(enclosure) => {
+            let track_title = item.title.clone().unwrap_or_else(|| playlist_title.clone());
+
             let play_track = move |_| {
                 commands.send(rradio_messages::Command::SetPlaylist {
-                    title: String::from(*playlist_title),
+                    title: playlist_title.clone(),
                     tracks: vec![rradio_messages::SetPlaylistTrack {
-                        title: String::from(item.title().unwrap_or(playlist_title)),
+                        title: track_title.clone(),
                         url: enclosure.url.clone(),
                     }],
                 });
@@ -96,64 +103,60 @@ fn FetchedPodcastItemView<'a>(
         None => rsx! { "Nothing to Stream!" },
     };
 
-    cx.render(rsx! {
-        h2 { "{title}" }
-        link
-        description
+    rsx! {
+        h2 { "{rss_title}" }
+        {link}
+        {description}
         hr { }
-    })
+    }
 }
 
 #[component]
-fn FetchedPodcastView(cx: Scope, fetched_podcast: FastEqRc<rss::Channel>) -> Element {
-    let title = fetched_podcast.title();
+fn FetchedPodcastView(fetched_podcast: FastEqRc<rss::Channel>) -> Element {
+    let playlist_title = fetched_podcast.title();
     let description = fetched_podcast.description();
 
     let items = fetched_podcast
         .as_ref()
         .items()
         .iter()
+        .cloned()
         .enumerate()
-        .map(|(index, item)| rsx! { FetchedPodcastItemView { key: "{index}", playlist_title: title, item: item } });
+        .map(|(index, item)| rsx! { FetchedPodcastItemView { key: "{index}", playlist_title, item } });
 
-    cx.render(rsx! {
-        h1 { "{title}" }
+    rsx! {
+        h1 { "{playlist_title}" }
         p { em { "{description}" } }
-        items
-    })
+        {items}
+    }
 }
 
 #[component]
-pub fn view(cx: Scope, player_state: PlayerState) -> Element {
-    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
+pub fn view(player_state: PlayerState) -> Element {
+    let commands = use_coroutine_handle::<rradio_messages::Command>();
 
-    let (new_podcast, new_podcast_store) = use_state(cx, String::new).split();
-    let (new_podcast_error, new_podcast_error_store) = use_state(cx, String::new).split();
+    let mut new_podcast = use_signal(String::new);
+    let mut new_podcast_error = use_signal(String::new);
 
-    let (podcasts, podcasts_store) = use_state(cx, Podcast::load_podcasts).split();
-    let (&selected_podcast_index, selected_podcast_index_store) = use_state(cx, || 0_usize).split();
-    let selected_podcast = podcasts.get(selected_podcast_index);
+    let mut podcasts = use_signal(Podcasts::load);
+    let mut selected_podcast_index = use_signal(|| 0_usize);
+    let current_selected_podcast_index = selected_podcast_index();
 
-    let fetched_podcast = use_future(cx, (podcasts_store, selected_podcast_index_store), {
-        move |(podcasts_store, selected_podcast_index_store)| async move {
-            let podcasts = podcasts_store.current();
-
-            if podcasts.is_empty() {
-                return Ok(None);
-            }
-
-            let podcast = podcasts
-                .get(*selected_podcast_index_store.current())
-                .context("Podcast index out of range")?;
-
-            Podcast::fetch(&podcast.url)
-                .await
-                .map(|channel| Some(FastEqRc::new(channel)))
+    let fetched_podcast = use_resource(move || async move {
+        if podcasts.is_empty() {
+            return Ok(None);
         }
-    })
-    .value();
 
-    let fetched_podcast = match fetched_podcast {
+        let podcast = podcasts
+            .get(current_selected_podcast_index)
+            .context("Podcast index out of range")?;
+
+        Podcast::fetch(&podcast.url)
+            .await
+            .map(|channel| Some(FastEqRc::new(channel)))
+    });
+
+    let fetched_podcast = match &*fetched_podcast.read() {
         None => rsx! { "Loading..." },
         Some(Err(err)) => rsx! { "{err:#}" },
         Some(Ok(None)) => rsx! { "" },
@@ -162,18 +165,21 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
         }
     };
 
-    let remove_current_podcast = move || {
-        if let Some(selected_podcast) = selected_podcast {
-            if gloo_dialogs::confirm(&format!(
-                "Are you sure you want to remove {}?",
-                selected_podcast.title
-            )) {
-                podcasts_store.with_mut(|podcasts| {
-                    podcasts.remove(selected_podcast_index);
-                    Podcast::save_podcasts(podcasts).ok();
-                    selected_podcast_index_store.set(0);
-                });
-            }
+    let mut remove_current_podcast = move || {
+        let mut podcasts = podcasts.write();
+
+        if podcasts
+            .get(current_selected_podcast_index)
+            .is_some_and(|selected_podcast| {
+                gloo_dialogs::confirm(&format!(
+                    "Are you sure you want to remove {}?",
+                    selected_podcast.title
+                ))
+            })
+        {
+            podcasts.remove(selected_podcast_index());
+            podcasts.save();
+            selected_podcast_index.set(0);
         }
     };
 
@@ -188,7 +194,7 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
     };
 
     let podcast_options = podcasts.iter().enumerate().map(|(index, option)| {
-        let is_selected = selected_podcast_index == index;
+        let is_selected = current_selected_podcast_index == index;
         rsx! {
             option {
                 key: "{index}",
@@ -200,19 +206,20 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
     });
 
     let podcast_options = std::iter::once({
-        let disabled = if selected_podcast.is_none() {
+        let key = "none-selected";
+        let disabled = if podcasts.get(current_selected_podcast_index).is_none() {
             "disabled"
         } else {
             ""
         };
-        let selected = if selected_podcast.is_none() {
+        let selected = if podcasts.get(current_selected_podcast_index).is_none() {
             "selected"
         } else {
             ""
         };
         rsx! {
             option {
-                key: "none-selected",
+                key: "{key}",
                 disabled: "{disabled}",
                 selected: "{selected}",
 
@@ -223,19 +230,15 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
 
     let add_podcast = {
         move |_| {
-            let new_podcast_store = new_podcast_store.clone();
-            let new_podcast_error_store = new_podcast_error_store.clone();
-            let podcasts_store = podcasts_store.clone();
-            let selected_podcast_index_store = selected_podcast_index_store.clone();
-            cx.spawn(async move {
-                let url = new_podcast_store.current();
+            spawn(async move {
+                let url = new_podcast.take();
 
-                match Podcast::fetch(url.as_str()).await {
+                match Podcast::fetch(&url).await {
                     Ok(podcast) => {
-                        let mut current_podcasts = podcasts_store.current().as_ref().clone();
+                        let mut current_podcasts = podcasts.write();
                         current_podcasts.push(Podcast {
-                            title: podcast.title.into(),
-                            url: url.as_str().into(),
+                            title: podcast.title,
+                            url: url.clone(),
                         });
 
                         current_podcasts.sort_by(|a, b| {
@@ -255,22 +258,20 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
                             }
                         });
 
-                        let new_selected_podcast_index = current_podcasts
-                            .iter()
-                            .enumerate()
-                            .find_map(|(index, podcast)| {
-                                (podcast.url.as_str() == url.as_str()).then_some(index)
-                            })
-                            .unwrap_or_default();
+                        selected_podcast_index.set(
+                            current_podcasts
+                                .iter()
+                                .enumerate()
+                                .find_map(|(index, podcast)| {
+                                    (podcast.url.as_str() == url.as_str()).then_some(index)
+                                })
+                                .unwrap_or_default(),
+                        );
 
-                        if let Ok(()) = Podcast::save_podcasts(&current_podcasts) {
-                            new_podcast_store.set(String::new());
-                            podcasts_store.set(current_podcasts);
-                            selected_podcast_index_store.set(new_selected_podcast_index);
-                        }
+                        current_podcasts.save();
                     }
                     Err(err) => {
-                        new_podcast_error_store.set(format!("{err:#}"));
+                        new_podcast_error.set(format!("{err:#}"));
                     }
                 }
             });
@@ -298,7 +299,7 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
 
     let seek_offset = std::time::Duration::from_secs(10);
 
-    cx.render(rsx! {
+    rsx! {
         div {
             id: "new-podcast",
             label {
@@ -306,7 +307,7 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
                 input {
                     "type": "text",
                     value: "{new_podcast}",
-                    oninput: move |ev| new_podcast_store.set(ev.value.clone()),
+                    oninput: move |ev| new_podcast.set(ev.value()),
                 }
             }
             button {
@@ -324,17 +325,17 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
             label {
                 "Select Podcast: "
                 select {
-                    onchange: move |ev| selected_podcast_index_store.set(ev.value.parse().unwrap()),
-                    podcast_options
+                    onchange: move |ev| selected_podcast_index.set(ev.value().parse().unwrap()),
+                    {podcast_options}
                 }
             }
         }
         main {
             style: "border-bottom: 1px solid black;",
-            fetched_podcast
-            remove_podcast
+            {fetched_podcast}
+            {remove_podcast}
         }
-        TrackPositionSlider { track_position: track_position }
+        TrackPositionSlider { track_position }
         div {
             style: "text-align: center;",
             "{track_title}"
@@ -344,5 +345,5 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
             button { onclick: move |_| commands.send(rradio_messages::Command::PlayPause), "⏯️" }
             button { onclick: move |_| commands.send(rradio_messages::Command::SeekForwards(seek_offset)), "⏩" }
         }
-    })
+    }
 }

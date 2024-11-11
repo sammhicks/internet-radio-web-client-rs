@@ -11,11 +11,10 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.75"
 console_error_panic_hook = "0.1.7"
-dioxus = "0.4.0"
-dioxus-web = "0.4.0"
+dioxus = { version = "0.5.6", features = ["launch", "web"] }
 futures-util = { version = "0.3.29", features = [ "sink" ] }
 gloo-dialogs = "0.2.0"
-gloo-net = { version = "0.5.0", features = [ "http", "websocket" ] }
+gloo-net = { version = "0.6.0", features = [ "http", "websocket" ] }
 gloo-storage = "0.3.0"
 gloo-timers = { version = "0.3.0", features = [ "futures" ] }
 gloo-utils = "0.2.0"

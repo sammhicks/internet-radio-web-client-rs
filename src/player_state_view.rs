@@ -8,10 +8,9 @@ use crate::{
 
 #[component]
 fn CurrentTrackView(
-    cx: Scope,
     track: rradio_messages::Track,
     tags: FastEqRc<Option<rradio_messages::TrackTags>>,
-) -> Element<'a> {
+) -> Element {
     tracing::debug!(?track, ?tags, "CurrentTrack");
 
     let tags = tags.as_ref().as_ref();
@@ -36,7 +35,7 @@ fn CurrentTrackView(
         .and_then(|tags| tags.image.as_deref())
         .unwrap_or_default();
 
-    cx.render(rsx! {
+    rsx! {
         div {
             id: "current-track",
             style: r#"background-image: url("{image}")"#,
@@ -48,19 +47,18 @@ fn CurrentTrackView(
                 div { "{genre}" }
             }
         }
-    })
+    }
 }
 
 #[component]
-fn PlaylistTrackView<'a>(
-    cx: Scope<'a>,
+fn PlaylistTrackView(
     track_index: usize,
-    track: &'a rradio_messages::Track,
+    track: rradio_messages::Track,
     is_current_track: bool,
-) -> Element<'a> {
+) -> Element {
     tracing::debug!(?track_index, ?track, ?is_current_track, "PlaylistTrack");
 
-    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
+    let commands = use_coroutine_handle::<rradio_messages::Command>();
 
     let contents = if track.is_notification {
         rsx! { "<Notification>" }
@@ -78,26 +76,25 @@ fn PlaylistTrackView<'a>(
         }
     };
 
-    let class_name = if *is_current_track {
+    let class_name = if is_current_track {
         "current-track"
     } else {
         ""
     };
 
-    let track_index = *track_index;
+    let track_index = track_index;
 
-    cx.render(rsx! {
+    rsx! {
         div {
             class: "{class_name}",
             onclick: move |_| commands.send(rradio_messages::Command::NthItem(track_index)),
-            contents
+            {contents}
         }
-    })
+    }
 }
 
 #[component]
 fn StationView(
-    cx: Scope,
     current_station: FastEqRc<rradio_messages::CurrentStation>,
     current_track_index: usize,
 ) -> Element {
@@ -105,21 +102,21 @@ fn StationView(
 
     match current_station.as_ref() {
         rradio_messages::CurrentStation::NoStation => {
-            return cx.render(rsx! {
+            return rsx! {
                 fieldset {
                     id: "current-station",
                     legend { "No Station" }
                 }
-            })
+            }
         }
         rradio_messages::CurrentStation::FailedToPlayStation { error } => {
-            return cx.render(rsx! {
+            return rsx! {
                 fieldset {
                     id: "current-station",
                     legend { "Failed to Play Station" }
                     "{error}"
                 }
-            })
+            }
         }
         rradio_messages::CurrentStation::PlayingStation {
             index,
@@ -140,29 +137,30 @@ fn StationView(
             let tracks = tracks.as_deref()
                 .unwrap_or_default()
                 .iter()
+                .cloned()
                 .enumerate()
                 .map(|(track_index, track)| {
-                    let is_current_track = track_index == *current_track_index;
-                    rsx! { PlaylistTrackView { key: "Track{track_index}", track_index: track_index, track: track, is_current_track: is_current_track } }
+                    let is_current_track = track_index == current_track_index;
+                    rsx! { PlaylistTrackView { key: "Track{track_index}", track_index, track, is_current_track } }
                 });
 
-            cx.render(rsx! {
+            rsx! {
                 fieldset {
                     id: "current-station",
-                    legend { legend }
-                    div { id: "current-station-title", title }
-                    tracks
+                    legend { {legend} }
+                    div { id: "current-station-title", {title} }
+                    {tracks}
                 }
-            })
+            }
         }
     }
 }
 
 #[component]
-pub fn view(cx: Scope, player_state: PlayerState) -> Element {
+pub fn view(player_state: PlayerState) -> Element {
     tracing::debug!(?player_state, "PlayerStateView");
 
-    let commands = use_coroutine_handle::<rradio_messages::Command>(cx).expect("Commands");
+    let commands = use_coroutine_handle::<rradio_messages::Command>();
 
     let volume_min = rradio_messages::VOLUME_MIN;
     let volume_max = rradio_messages::VOLUME_ZERO_DB;
@@ -172,19 +170,19 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
             tracks.get(player_state.current_track_index).map(|current_track| rsx! { CurrentTrackView { track: current_track.clone(), tags: player_state.current_track_tags.clone() } })
         },
         _ => None,
-};
+    };
 
     let track_position =
         TrackPositionText::new(&player_state.track_position, &player_state.track_duration);
 
-    cx.render(rsx! {
+    rsx! {
         fieldset {
             id: "current-track-container",
             legend { "Current Track" }
-            current_track
+            {current_track}
         }
         StationView { current_station: player_state.current_station.clone(), current_track_index: player_state.current_track_index }
-        TrackPositionSlider { track_position: track_position }
+        TrackPositionSlider { track_position }
         footer {
             div {
                 class: "expand center-single-child",
@@ -208,10 +206,10 @@ pub fn view(cx: Scope, player_state: PlayerState) -> Element {
                     min: "{volume_min}",
                     max: "{volume_max}",
                     value: "{player_state.volume}",
-                    oninput: move |ev| handle_input(rradio_messages::Command::SetVolume, &ev.value, commands)
+                    oninput: move |ev| handle_input(rradio_messages::Command::SetVolume, &ev.value(), &commands)
                 }
                 "🔊"
             }
         }
-    })
+    }
 }
