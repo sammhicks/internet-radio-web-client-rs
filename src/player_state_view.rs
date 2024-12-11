@@ -157,7 +157,7 @@ fn StationView(
 }
 
 #[component]
-pub fn view(player_state: PlayerState) -> Element {
+pub fn PlayerStateView(player_state: PlayerState) -> Element {
     tracing::debug!(?player_state, "PlayerStateView");
 
     let commands = use_coroutine_handle::<rradio_messages::Command>();

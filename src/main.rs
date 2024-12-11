@@ -136,10 +136,11 @@ enum AppCommand {
 }
 
 #[component]
-fn ConnectionStateView(connection_state: ConnectionState) -> Element {
+fn ConnectionStateView(connection_state: Signal<ConnectionState>) -> Element {
+    let connection_state = connection_state();
     let message = match &connection_state {
         ConnectionState::Connecting => "Connecting...",
-        ConnectionState::Connected => return None,
+        ConnectionState::Connected => return rsx! {},
         ConnectionState::Disconnected => "RRadio has terminated",
         ConnectionState::ConnectionError(err) => err,
     };
@@ -147,7 +148,7 @@ fn ConnectionStateView(connection_state: ConnectionState) -> Element {
     rsx! {
         header {
             id: "connection-message",
-            output { {message} }
+            output { "{message}" }
         }
     }
 }
@@ -157,7 +158,7 @@ fn RootView() -> Element {
     let mut connection_state = use_signal(|| ConnectionState::Connecting);
     let mut player_state = use_signal(PlayerState::default);
 
-    use_coroutine(|mut commands| {
+    use_coroutine(move |mut commands| {
         async move {
             let host = gloo_storage::LocalStorage::raw()
                 .get_item("RRADIO_SERVER")
@@ -265,16 +266,16 @@ fn RootView() -> Element {
 
     let app = match use_context() {
         AppView::PlayerState => {
-            rsx! { player_state_view::view { player_state } }
+            rsx! { player_state_view::PlayerStateView { player_state } }
         }
-        AppView::Podcasts => rsx! { podcasts_view::view { player_state } },
+        AppView::Podcasts => rsx! { podcasts_view::PodcastsView { player_state } },
         AppView::Debug => {
-            rsx! { debug_view::view { connection_state: connection_state(), player_state } }
+            rsx! { debug_view::DebugView { connection_state, player_state } }
         }
     };
 
     rsx! {
-        ConnectionStateView { connection_state: connection_state() }
+        ConnectionStateView { connection_state }
         nav {
             a { href: "?player", "Player" },
             a { href: "?podcasts", "Podcasts" }

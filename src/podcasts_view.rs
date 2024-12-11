@@ -132,7 +132,14 @@ fn FetchedPodcastView(fetched_podcast: FastEqRc<rss::Channel>) -> Element {
 }
 
 #[component]
-pub fn view(player_state: PlayerState) -> Element {
+pub fn PodcastsView(player_state: PlayerState) -> Element {
+    enum FetchedPodcast {
+        NoPodcasts,
+        FetchingPodcast { title: String },
+        Podcast(FastEqRc<rss::Channel>),
+        Error(anyhow::Error),
+    }
+
     let commands = use_coroutine_handle::<rradio_messages::Command>();
 
     let mut new_podcast = use_signal(String::new);
@@ -140,36 +147,49 @@ pub fn view(player_state: PlayerState) -> Element {
 
     let mut podcasts = use_signal(Podcasts::load);
     let mut selected_podcast_index = use_signal(|| 0_usize);
-    let current_selected_podcast_index = selected_podcast_index();
 
-    let fetched_podcast = use_resource(move || async move {
+    let mut fetched_podcast = use_signal(|| FetchedPodcast::NoPodcasts);
+
+    let _ = use_resource(move || async move {
         if podcasts.is_empty() {
-            return Ok(None);
+            fetched_podcast.set(FetchedPodcast::NoPodcasts);
+            return;
         }
 
-        let podcast = podcasts
-            .get(current_selected_podcast_index)
-            .context("Podcast index out of range")?;
+        let Some(podcast) = podcasts.get(selected_podcast_index()) else {
+            fetched_podcast.set(FetchedPodcast::Error(anyhow::Error::msg(
+                "Podcast index out of range",
+            )));
+            return;
+        };
 
-        Podcast::fetch(&podcast.url)
-            .await
-            .map(|channel| Some(FastEqRc::new(channel)))
+        fetched_podcast.set(FetchedPodcast::FetchingPodcast {
+            title: podcast.title.clone(),
+        });
+
+        fetched_podcast.set(
+            Podcast::fetch(&podcast.url)
+                .await
+                .map_or_else(FetchedPodcast::Error, |podcast| {
+                    FetchedPodcast::Podcast(FastEqRc::new(podcast))
+                }),
+        );
     });
 
     let fetched_podcast = match &*fetched_podcast.read() {
-        None => rsx! { "Loading..." },
-        Some(Err(err)) => rsx! { "{err:#}" },
-        Some(Ok(None)) => rsx! { "" },
-        Some(Ok(Some(fetched_podcast))) => {
+        FetchedPodcast::NoPodcasts => rsx! {},
+        FetchedPodcast::FetchingPodcast { title } => rsx! { div { "Loading {title}..." } },
+        FetchedPodcast::Podcast(fetched_podcast) => {
             rsx! { FetchedPodcastView { fetched_podcast: fetched_podcast.clone() } }
         }
+        FetchedPodcast::Error(err) => rsx! { div { "{err:#}" } },
     };
 
     let mut remove_current_podcast = move || {
         let mut podcasts = podcasts.write();
 
         if podcasts
-            .get(current_selected_podcast_index)
+            .get(selected_podcast_index())
             .is_some_and(|selected_podcast| {
                 gloo_dialogs::confirm(&format!(
                     "Are you sure you want to remove {}?",
@@ -194,7 +214,7 @@ pub fn view(player_state: PlayerState) -> Element {
     };
 
     let podcast_options = podcasts.iter().enumerate().map(|(index, option)| {
-        let is_selected = current_selected_podcast_index == index;
+        let is_selected = selected_podcast_index() == index;
         rsx! {
             option {
                 key: "{index}",
@@ -207,12 +227,12 @@ pub fn view(player_state: PlayerState) -> Element {
 
     let podcast_options = std::iter::once({
         let key = "none-selected";
-        let disabled = if podcasts.get(current_selected_podcast_index).is_none() {
+        let disabled = if podcasts.get(selected_podcast_index()).is_none() {
             "disabled"
         } else {
             ""
         };
-        let selected = if podcasts.get(current_selected_podcast_index).is_none() {
+        let selected = if podcasts.get(selected_podcast_index()).is_none() {
             "selected"
         } else {
             ""
@@ -325,7 +345,7 @@ pub fn view(player_state: PlayerState) -> Element {
             label {
                 "Select Podcast: "
                 select {
-                    onchange: move |ev| selected_podcast_index.set(ev.value().parse().unwrap()),
+                    oninput: move |ev| selected_podcast_index.set(ev.value().parse().unwrap_or_default()),
                     {podcast_options}
                 }
             }

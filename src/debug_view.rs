@@ -96,9 +96,9 @@ fn CurrentStationView(
 }
 
 #[component]
-pub fn view(connection_state: ConnectionState, player_state: PlayerState) -> Element {
-    if let ConnectionState::Connecting = connection_state {
-        return None;
+pub fn DebugView(connection_state: Signal<ConnectionState>, player_state: PlayerState) -> Element {
+    if let ConnectionState::Connecting = connection_state() {
+        return rsx! {};
     }
 
     let PlayerState {

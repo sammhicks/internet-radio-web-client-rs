@@ -11,7 +11,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.75"
 console_error_panic_hook = "0.1.7"
-dioxus = { version = "0.5.6", features = ["launch", "web"] }
+dioxus = { version = "0.6.0", features = ["launch", "web"] }
 futures-util = { version = "0.3.29", features = [ "sink" ] }
 gloo-dialogs = "0.2.0"
 gloo-net = { version = "0.6.0", features = [ "http", "websocket" ] }
