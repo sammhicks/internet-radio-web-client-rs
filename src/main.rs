@@ -4,7 +4,10 @@
 use std::{fmt, time::Duration};
 
 use anyhow::Context;
-use dioxus::prelude::*;
+use dioxus::{
+    logger::tracing::{self, warn},
+    prelude::*,
+};
 use futures_util::{FutureExt, SinkExt, StreamExt};
 use gloo_storage::Storage;
 
@@ -126,7 +129,7 @@ where
     match T::from_str(value) {
         Ok(value) => commands.send(f(value)),
         Err(err) => {
-            tracing::warn!("Failed to handle input value {value:?}: {err}");
+            warn!("Failed to handle input value {value:?}: {err}");
         }
     }
 }
@@ -223,7 +226,7 @@ fn RootView() -> Element {
                                     anyhow::anyhow!("Failed to receive websocket message: {err}")
                                 })? {
                                     gloo_net::websocket::Message::Text(message) => {
-                                        tracing::warn!("Ignoring text message: {message:?}");
+                                        warn!("Ignoring text message: {message:?}");
                                     }
                                     gloo_net::websocket::Message::Bytes(mut buffer) => {
                                         match rradio_messages::Event::decode(&mut buffer)
@@ -286,20 +289,15 @@ fn RootView() -> Element {
 }
 
 fn main() {
-    console_error_panic_hook::set_once();
-
-    let max_level = gloo_storage::LocalStorage::raw()
-        .get("RRADIO_LOGGING")
-        .unwrap()
-        .map_or(tracing::Level::INFO, |level| {
-            level.parse().expect("Logging level")
-        });
-
-    tracing_wasm::set_as_global_default_with_config(
-        tracing_wasm::WASMLayerConfigBuilder::new()
-            .set_max_level(max_level)
-            .build(),
-    );
+    dioxus::logger::init(
+        gloo_storage::LocalStorage::raw()
+            .get("RRADIO_LOGGING")
+            .unwrap()
+            .map_or(tracing::Level::INFO, |level| {
+                level.parse().expect("Logging level")
+            }),
+    )
+    .expect("logger failed to init");
 
     let app_view = match gloo_utils::window()
         .location()

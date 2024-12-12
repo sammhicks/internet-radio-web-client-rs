@@ -10,8 +10,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.75"
-console_error_panic_hook = "0.1.7"
-dioxus = { version = "0.6.0", features = ["launch", "web"] }
+dioxus = { version = "0.6.0", features = ["web"] }
 futures-util = { version = "0.3.29", features = [ "sink" ] }
 gloo-dialogs = "0.2.0"
 gloo-net = { version = "0.6.0", features = [ "http", "websocket" ] }
@@ -21,7 +20,6 @@ gloo-utils = "0.2.0"
 rradio-messages = { git = "https://github.com/sammhicks/internet-radio-rs" }
 rss = "2.0.6"
 serde = { version = "1.0.192", features = [ "derive" ] }
-tracing = "0.1.40"
-tracing-wasm = "0.2.1"
+thiserror = "2.0.6"
 urlencoding = "2.1.3"
 web-sys = "0.3.65"

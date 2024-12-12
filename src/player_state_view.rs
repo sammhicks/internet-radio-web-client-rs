@@ -1,4 +1,4 @@
-use dioxus::prelude::*;
+use dioxus::{logger::tracing::debug, prelude::*};
 
 use crate::{
     handle_input,
@@ -11,7 +11,7 @@ fn CurrentTrackView(
     track: rradio_messages::Track,
     tags: FastEqRc<Option<rradio_messages::TrackTags>>,
 ) -> Element {
-    tracing::debug!(?track, ?tags, "CurrentTrack");
+    debug!(?track, ?tags, "CurrentTrack");
 
     let tags = tags.as_ref().as_ref();
 
@@ -56,7 +56,7 @@ fn PlaylistTrackView(
     track: rradio_messages::Track,
     is_current_track: bool,
 ) -> Element {
-    tracing::debug!(?track_index, ?track, ?is_current_track, "PlaylistTrack");
+    debug!(?track_index, ?track, ?is_current_track, "PlaylistTrack");
 
     let commands = use_coroutine_handle::<rradio_messages::Command>();
 
@@ -98,7 +98,7 @@ fn StationView(
     current_station: FastEqRc<rradio_messages::CurrentStation>,
     current_track_index: usize,
 ) -> Element {
-    tracing::debug!(?current_station, ?current_track_index, "Station");
+    debug!(?current_station, ?current_track_index, "Station");
 
     match current_station.as_ref() {
         rradio_messages::CurrentStation::NoStation => {
@@ -158,7 +158,7 @@ fn StationView(
 
 #[component]
 pub fn PlayerStateView(player_state: PlayerState) -> Element {
-    tracing::debug!(?player_state, "PlayerStateView");
+    debug!(?player_state, "PlayerStateView");
 
     let commands = use_coroutine_handle::<rradio_messages::Command>();
 
